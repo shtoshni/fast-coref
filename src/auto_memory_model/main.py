@@ -78,7 +78,7 @@ def main():
                         help='Number of training docs.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
-    parser.add_argument('-max_training_segments', default=None, type=int,
+    parser.add_argument('-max_training_segments', default=1, type=int,
                         help='Maximum number of BERT segments in a document.')
     parser.add_argument('-sample_invalid', help='Sample prob. of invalid mentions during training',
                         default=0.0, type=float)
@@ -102,6 +102,9 @@ def main():
                         default=None, type=str)
 
     args = parser.parse_args()
+
+    if args.dataset == 'litbank':
+        args.train_with_singletons = True
 
     # Get model directory name
     opt_dict = OrderedDict()
@@ -206,4 +209,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # import torch
+    # torch.multiprocessing.set_start_method('spawn')
     main()

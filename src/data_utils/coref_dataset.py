@@ -9,6 +9,7 @@ class CorefDataset(Dataset):
         self.max_training_segments = max_training_segments
         self.tokenizer = tokenizer
         self.split_data = split_data
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def __len__(self):
         return len(self.split_data)
@@ -60,8 +61,8 @@ class CorefDataset(Dataset):
         padded_sent = [self.tokenizer.convert_tokens_to_ids(sent)
                        + [self.tokenizer.pad_token_id] * (max_sent_len - len(sent)) for sent in sentences]
 
-        output_dict["padded_sent"] = padded_sent
-        output_dict["sent_len_list"] = sent_len_list
+        output_dict["padded_sent"] = torch.tensor(padded_sent)
+        output_dict["sent_len_list"] = torch.tensor(sent_len_list)
         output_dict["doc_key"] = instance["doc_key"]
         output_dict["clusters"] = instance["clusters"]
         output_dict["subtoken_map"] = instance["subtoken_map"]

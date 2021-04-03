@@ -15,13 +15,12 @@ class OverlapDocEncoder(BaseDocEncoder):
         text_length_list: list of length of chunks (length C)
         """
 
-        doc_tens = torch.tensor(example["padded_sent"], device=self.device)
-        # doc_tens = torch.squeeze(doc_tens, dim=0)
+        doc_tens = example["padded_sent"].to(self.device)
         sent_len_list = example["sent_len_list"]
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
-        num_chunks = len(sent_len_list)
-        attn_mask = get_sequence_mask(torch.tensor(sent_len_list, device=self.device))
+        num_chunks = sent_len_list.shape[0]
+        attn_mask = get_sequence_mask(sent_len_list.to(self.device))
 
         if not self.finetune:
             with torch.no_grad():

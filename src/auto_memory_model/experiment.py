@@ -333,6 +333,9 @@ class Experiment:
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 
+                    del log_example["padded_sent"]
+                    del log_example["sent_len_list"]
+
                     f.write(json.dumps(log_example) + "\n")
 
                 print("Ground Truth Actions:", gt_class_counter)
