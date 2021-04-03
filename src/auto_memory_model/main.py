@@ -40,7 +40,7 @@ def main():
                         choices=['independent', 'overlap'], help='BERT model type')
     parser.add_argument('-pretrained_bert_dir', default='../resources', type=str,
                         help='SpanBERT model location')
-    parser.add_argument('-max_segment_len', default=4096, type=int,
+    parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of windowed inputs.')
 
     # Mention variables
@@ -63,7 +63,7 @@ def main():
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
     parser.add_argument('-entity_rep', default='wt_avg', type=str,
-                        choices=['learned_avg', 'wt_avg'], help='Entity representation.')
+                        choices=['learned_avg', 'wt_avg', 'max'], help='Entity representation.')
     parser.add_argument('-emb_size', default=20, type=int,
                         help='Embedding size of features.')
 

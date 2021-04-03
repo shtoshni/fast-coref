@@ -34,6 +34,32 @@ def get_actions_unbounded(pred_mentions, clusters, rand_fl_list, follow_gt, samp
     return actions
 
 
+def get_actions_unbounded_fast(pred_mentions, clusters):
+    # Useful data structures
+    mention_to_cluster = get_mention_to_cluster_idx(clusters)
+
+    actions = []
+    cluster_to_cell = {}
+
+    cell_counter = 0
+    for idx, mention in enumerate(pred_mentions):
+        if tuple(mention) not in mention_to_cluster:
+            actions.append((-1, 'i'))
+        else:
+            mention_cluster = mention_to_cluster[tuple(mention)]
+            if mention_cluster in cluster_to_cell:
+                # Cluster is already being tracked
+                actions.append((cluster_to_cell[mention_cluster], 'c'))
+            else:
+                # Cluster is not being tracked
+                # Add the mention to being tracked
+                cluster_to_cell[mention_cluster] = cell_counter
+                actions.append((cell_counter, 'o'))
+                cell_counter += 1
+
+    return actions
+
+
 def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):
     # Useful data structures
     pred_mentions = [tuple(mention) for mention in pred_mentions]

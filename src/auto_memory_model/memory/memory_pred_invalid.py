@@ -55,7 +55,7 @@ class MemoryPredInvalid(BaseMemory):
             # No space - The new entity is not "fertile" enough
             return output + (-1, 'n')
 
-    def forward(self, ment_boundaries, mention_emb_list, mention_scores, gt_actions, metadata, rand_fl_list,
+    def forward(self, ment_boundaries, mention_emb_list, mention_scores, gt_actions, metadata,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
@@ -63,7 +63,7 @@ class MemoryPredInvalid(BaseMemory):
         if self.mem_type == 'lru':
             lru_list = list(range(self.max_ents))
 
-        entity_or_not_list, coref_new_list, new_ignore_list = [], [], []
+        coref_new_list, new_ignore_list = [], []
         action_list = []  # argmax actions
         first_overwrite = True
         # last_action_str = '<s>'
@@ -77,16 +77,6 @@ class MemoryPredInvalid(BaseMemory):
             num_ents = mem_vectors.shape[0]
             # metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_start, last_mention_start, ent_counter, metadata)
-
-            overwrite_ign_scores = torch.cat([torch.tensor([0.0], device=self.device), -ment_score], dim=0)
-            entity_or_not_list.append(overwrite_ign_scores)
-            pred_action_str = None
-            if ment_score < 0:
-                pred_action_str = 'i'
-
-            if (follow_gt and gt_action_str == 'i') or ((not follow_gt) and pred_action_str == 'i'):
-                action_list.append((-1, 'i'))
-                continue
 
             coref_new_scores = self.get_coref_new_scores(
                 query_vector, mem_vectors, ent_counter, feature_embs)
@@ -157,4 +147,4 @@ class MemoryPredInvalid(BaseMemory):
                 lru_list.remove(cell_idx)
                 lru_list.append(cell_idx)
 
-        return entity_or_not_list, coref_new_list, new_ignore_list, action_list
+        return coref_new_list, new_ignore_list, action_list

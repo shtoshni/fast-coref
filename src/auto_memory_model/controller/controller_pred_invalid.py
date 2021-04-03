@@ -26,11 +26,11 @@ class ControllerPredInvalid(BaseController):
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
-    def get_actions(self, example, pred_mentions, rand_fl_list, follow_gt, sample_invalid):
+    def get_actions(self, example, pred_mentions):
         if "clusters" in example:
             gt_clusters = example["clusters"]
             if self.mem_type == 'unbounded':
-                return get_actions_unbounded(pred_mentions, gt_clusters, rand_fl_list, follow_gt, sample_invalid)
+                return get_actions_unbounded_fast(pred_mentions, gt_clusters)
             elif self.mem_type == 'learned':
                 return get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents=self.max_ents)
             elif self.mem_type == 'lru':
@@ -66,44 +66,38 @@ class ControllerPredInvalid(BaseController):
         """
         Encode a batch of excerpts.
         """
-        pred_mentions, mention_emb_list, mention_score_list = self.get_mention_embs(example)
+        pred_mentions, mention_emb_list, mention_score_list, mention_loss = \
+                self.get_mention_embs(example, ignore_invalid=True)
 
         follow_gt = self.training or teacher_forcing
-        rand_fl_list = np.random.random(len(mention_emb_list))
-        if teacher_forcing:
-            rand_fl_list = np.zeros_like(rand_fl_list)
-
-        gt_actions = self.get_actions(example, pred_mentions, rand_fl_list, follow_gt, self.sample_invalid)
+        gt_actions = self.get_actions(example, pred_mentions)
 
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
-        entity_or_not_list, coref_new_list, new_ignore_list, action_list = self.memory_net(
-            pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata, rand_fl_list,
+        coref_new_list, new_ignore_list, action_list = self.memory_net(
+            pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata,
             teacher_forcing=teacher_forcing)
         loss = {'total': None}
         if follow_gt:
-            if len(entity_or_not_list) > 0:
-                entity_invalid_tens = torch.stack(entity_or_not_list, dim=0)
-                entity_or_not_indices = self.entity_or_not_entity_gt(action_list)
-                entity_loss = torch.sum(self.loss_fn(entity_invalid_tens, entity_or_not_indices))
-                loss['entity'] = entity_loss
+            if mention_loss is not None:
+                loss['entity'] = mention_loss
                 loss['total'] = loss['entity']
-                if len(coref_new_list) > 0:
-                    coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
-                    loss['coref'] = coref_loss
-                    loss['total'] += loss['coref']
+            if len(coref_new_list) > 0:
+                coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
+                loss['coref'] = coref_loss
+                loss['total'] += loss['coref']
 
-                    # Calculate new-ignore loss
-                    if self.is_mem_bounded and len(new_ignore_list) > 0:
-                        new_ignore_tens = torch.stack(new_ignore_list, dim=0)
-                        new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
-                        # ignore_loss = torch.sum(self.label_smoothing_loss_fn(new_ignore_tens, new_ignore_indices))
-                        ignore_loss = torch.sum(self.label_smoothing_loss_fn(
-                            new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
-                        loss['ignore'] = ignore_loss
-                        loss['total'] += loss['ignore']
+                # Calculate new-ignore loss
+                if self.is_mem_bounded and len(new_ignore_list) > 0:
+                    new_ignore_tens = torch.stack(new_ignore_list, dim=0)
+                    new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
+                    # ignore_loss = torch.sum(self.label_smoothing_loss_fn(new_ignore_tens, new_ignore_indices))
+                    ignore_loss = torch.sum(self.label_smoothing_loss_fn(
+                        new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
+                    loss['ignore'] = ignore_loss
+                    loss['total'] += loss['ignore']
             return loss, action_list, pred_mentions, gt_actions
         else:
             mention_scores = [mention_score.item() for mention_score in mention_score_list]

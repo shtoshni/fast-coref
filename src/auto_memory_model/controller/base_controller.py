@@ -66,6 +66,7 @@ class BaseController(nn.Module):
 
         self.memory_net = None
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
+        self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
 
     def set_max_ents(self, max_ents):
         self.max_ents = max_ents
@@ -102,37 +103,74 @@ class BaseController(nn.Module):
 
         return width_scores
 
+    def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
+        gold_ments = torch.zeros(num_words, self.max_span_width).cuda()
+        for cluster in clusters:
+            for (span_start, span_end) in cluster:
+                span_width = span_end - span_start + 1
+                if span_width <= self.max_span_width:
+                    span_width_idx = span_width - 1
+                    gold_ments[span_start, span_width_idx] = 1
+
+        filt_gold_ments = gold_ments.reshape(-1)[flat_cand_mask].float()
+        # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
+        return filt_gold_ments
+
     def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
 
-        sent_map = torch.tensor(example["sentence_map"], device=self.device)
-
-        cand_starts = (torch.unsqueeze(torch.arange(num_words, device=self.device), dim=1)).\
-            repeat(1, self.max_span_width)
-        cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width, device=self.device), dim=0)
+        sent_map = torch.tensor(example["sentence_map"]).cuda()
+        # num_words x max_span_width
+        cand_starts = torch.unsqueeze(torch.arange(num_words), dim=1).repeat(1, self.max_span_width).cuda()
+        cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).cuda()
 
         cand_start_sent_indices = sent_map[cand_starts]
         # Avoid getting sentence indices for cand_ends >= num_words
-        corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
+        corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends).cuda() * (num_words - 1))
         cand_end_sent_indices = sent_map[corr_cand_ends]
 
         # End before document ends & Same sentence
         constraint1 = (cand_ends < num_words)
         constraint2 = (cand_start_sent_indices == cand_end_sent_indices)
-
         cand_mask = constraint1 & constraint2
         flat_cand_mask = cand_mask.reshape(-1)
 
         # Filter and flatten the candidate end points
         filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-        return filt_cand_starts, filt_cand_ends
+        return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-    def get_pred_mentions(self, example, encoded_doc, topk=False):
+    # def get_candidate_endpoints(self, encoded_doc, example):
+    #     num_words = encoded_doc.shape[0]
+    #
+    #     sent_map = torch.tensor(example["sentence_map"], device=self.device)
+    #
+    #     cand_starts = (torch.unsqueeze(torch.arange(num_words, device=self.device), dim=1)).\
+    #         repeat(1, self.max_span_width)
+    #     cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width, device=self.device), dim=0)
+    #
+    #     cand_start_sent_indices = sent_map[cand_starts]
+    #     # Avoid getting sentence indices for cand_ends >= num_words
+    #     corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
+    #     cand_end_sent_indices = sent_map[corr_cand_ends]
+    #
+    #     # End before document ends & Same sentence
+    #     constraint1 = (cand_ends < num_words)
+    #     constraint2 = (cand_start_sent_indices == cand_end_sent_indices)
+    #
+    #     cand_mask = constraint1 & constraint2
+    #     flat_cand_mask = cand_mask.reshape(-1)
+    #
+    #     # Filter and flatten the candidate end points
+    #     filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
+    #     filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
+    #     return filt_cand_starts, filt_cand_ends
+
+    def get_pred_mentions(self, example, encoded_doc, topk=False, ignore_invalid=False):
         # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
         num_words = encoded_doc.shape[0]
 
-        filt_cand_starts, filt_cand_ends = self.get_candidate_endpoints(encoded_doc, example)
+        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
 
         span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
 
@@ -142,8 +180,14 @@ class BaseController(nn.Module):
 
         k = int(self.top_span_ratio * num_words)
 
+        mention_loss = None
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
+            filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
+            mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
+            # print(topk_indices.shape)
+            if ignore_invalid:
+                topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
         else:
             if topk:
                 topk_indices = torch.topk(mention_logits, k)[1]
@@ -161,14 +205,14 @@ class BaseController(nn.Module):
         sort_scores = topk_starts + 1e-5 * topk_ends
         _, sorted_indices = torch.sort(sort_scores, 0)
 
-        return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices]
+        return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], mention_loss
 
-    def get_mention_embs(self, example):
+    def get_mention_embs(self, example, ignore_invalid=False):
         encoded_doc = self.doc_encoder(example)
-        # pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
-        # print(pred_starts.shape)
+        mention_loss = None
         if not self.use_gold_ments:
-            pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc)
+            pred_starts, pred_ends, pred_scores, mention_loss = self.get_pred_mentions(
+                example, encoded_doc, ignore_invalid=ignore_invalid)
         else:
             mentions = []
             for cluster in example["clusters"]:
@@ -187,7 +231,7 @@ class BaseController(nn.Module):
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
-        return pred_mentions, mention_emb_list, pred_scores
+        return pred_mentions, mention_emb_list, pred_scores, mention_loss
 
     def entity_or_not_entity_gt(self, action_tuple_list):
         action_indices = [1 if action_str == 'i' else 0 for (_, action_str) in action_tuple_list]

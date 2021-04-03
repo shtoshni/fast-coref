@@ -17,7 +17,6 @@ from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from coref_utils.utils import remove_singletons
 from auto_memory_model.controller.utils import pick_controller
-import wandb
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
@@ -88,10 +87,6 @@ class Experiment:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.train_info, self.optimizer, self.optim_scheduler = {}, {}, {}
-        run_name = str(("slurm " if slurm_id is not None else "") + path.basename(model_dir))
-        wandb.init(name=run_name, project='Coreference',
-                   notes='Training with Longformer', resume=True,
-                   dir=args.base_model_dir)
 
         if eval_model:
             checkpoint = torch.load(self.best_model_path, map_location=self.device)
@@ -221,9 +216,7 @@ class Experiment:
                         cur_example["doc_key"], example_loss,
                         (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
                     )
-                    wandb.log({"Epoch": epoch,
-                               "Step": self.train_info['global_steps'],
-                               "Train Loss": example_loss})
+
                     if torch.cuda.is_available():
                         try:
                             torch.cuda.reset_peak_memory_stats()
@@ -262,8 +255,6 @@ class Experiment:
             elapsed_time = time.time() - start_time
             logger.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
                         % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time))
-
-            wandb.log({"Epoch": epoch, "Val F1": fscore})
 
             sys.stdout.flush()
             logger.handlers[0].flush()

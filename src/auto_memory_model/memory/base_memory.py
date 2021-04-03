@@ -168,6 +168,9 @@ class BaseMemory(nn.Module):
                 self.alpha(torch.cat([mem_vectors[cell_idx, :], query_vector], dim=0)))
             avg_pool_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * query_vector
             mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(avg_pool_vec, dim=0)
+        elif self.entity_rep == 'max':
+            mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(
+                torch.max(mem_vectors[cell_idx, :], query_vector), dim=0)
         else:
             avg_vec = (mem_vectors[cell_idx] * ent_counter[cell_idx] + query_vector)/(ent_counter[cell_idx] + 1)
             mem_vectors = mem_vectors * (1 - mask) + mask * avg_vec

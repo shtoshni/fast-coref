@@ -58,43 +58,6 @@ class Controller(BaseController):
         span_embs = torch.cat(span_emb_list, dim=-1)
         return span_embs
 
-    def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
-        gold_ments = torch.zeros(num_words, self.max_span_width).cuda()
-        for cluster in clusters:
-            for (span_start, span_end) in cluster:
-                span_width = span_end - span_start + 1
-                if span_width <= self.max_span_width:
-                    span_width_idx = span_width - 1
-                    gold_ments[span_start, span_width_idx] = 1
-
-        filt_gold_ments = gold_ments.reshape(-1)[flat_cand_mask].float()
-        # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
-        return filt_gold_ments
-
-    def get_candidate_endpoints(self, encoded_doc, example):
-        num_words = encoded_doc.shape[0]
-
-        sent_map = torch.tensor(example["sentence_map"]).cuda()
-        # num_words x max_span_width
-        cand_starts = torch.unsqueeze(torch.arange(num_words), dim=1).repeat(1, self.max_span_width).cuda()
-        cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).cuda()
-
-        cand_start_sent_indices = sent_map[cand_starts]
-        # Avoid getting sentence indices for cand_ends >= num_words
-        corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends).cuda() * (num_words - 1))
-        cand_end_sent_indices = sent_map[corr_cand_ends]
-
-        # End before document ends & Same sentence
-        constraint1 = (cand_ends < num_words)
-        constraint2 = (cand_start_sent_indices == cand_end_sent_indices)
-        cand_mask = constraint1 & constraint2
-        flat_cand_mask = cand_mask.reshape(-1)
-
-        # Filter and flatten the candidate end points
-        filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-        filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-        return filt_cand_starts, filt_cand_ends, flat_cand_mask
-
     def forward(self, example):
         """
         Encode a batch of excerpts.
