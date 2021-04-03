@@ -1,0 +1,8 @@
+models/
+lrec2020-coref/
+__pycache__/
+*.out
+data/
+.idea/
+.ipynb_checkpoints/
+resources/
