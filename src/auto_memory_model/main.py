@@ -144,7 +144,7 @@ def main():
 
     str_repr = str(opt_dict.items())
     hash_idx = hashlib.md5(str_repr.encode("utf-8")).hexdigest()
-    model_name = f"coref_{args.dataset}_" + str(hash_idx)
+    model_name = f"longformer_{args.dataset}_" + str(hash_idx)
 
     if args.model_dir is None:
         model_dir = path.join(args.base_model_dir, model_name)

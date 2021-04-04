@@ -66,7 +66,6 @@ class MemoryPredInvalid(BaseMemory):
         coref_new_list, new_ignore_list = [], []
         action_list = []  # argmax actions
         first_overwrite = True
-        # last_action_str = '<s>'
 
         follow_gt = self.training or teacher_forcing
 
@@ -74,17 +73,21 @@ class MemoryPredInvalid(BaseMemory):
         for ment_idx, ((ment_start, ment_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(ment_boundaries, mention_emb_list, mention_scores, gt_actions)):
             query_vector = ment_emb
-            num_ents = mem_vectors.shape[0]
             # metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_start, last_mention_start, ent_counter, metadata)
 
-            coref_new_scores = self.get_coref_new_scores(
-                query_vector, mem_vectors, ent_counter, feature_embs)
+            if first_overwrite:
+                pred_cell_idx, pred_action_str = 0, 'o'
+            else:
+                coref_new_scores = self.get_coref_new_scores(
+                    query_vector, mem_vectors, ent_counter, feature_embs)
 
-            pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
+                pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
+                coref_new_list.append(coref_new_scores)
+
             if self.is_mem_bounded:
                 # Check if the model has reached memory capacity
-                if (follow_gt and gt_action_str != 'c' and num_ents == self.max_ents) or \
+                if (follow_gt and gt_action_str != 'c' and mem_vectors.shape[0] == self.max_ents) or \
                         ((not follow_gt) and pred_cell_idx == self.max_ents):
                     # Reached memory capacity
                     if self.mem_type == 'learned':
@@ -96,7 +99,6 @@ class MemoryPredInvalid(BaseMemory):
                             query_vector, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
                         new_ignore_list.append(new_or_ignore_scores)
 
-            coref_new_list.append(coref_new_scores)
             action_list.append((pred_cell_idx, pred_action_str))
 
             if follow_gt:
@@ -108,28 +110,24 @@ class MemoryPredInvalid(BaseMemory):
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
 
-            # last_action_str = action_str
-
             if first_overwrite and action_str == 'o':
                 first_overwrite = False
-                # We start with a single empty memory cell
                 mem_vectors = torch.unsqueeze(query_vector, dim=0)
                 ent_counter = torch.tensor([1.0], device=self.device)
                 last_mention_start[0] = ment_start
             else:
                 # Update the memory
-                cell_mask = (torch.arange(0, num_ents, device=self.device) == cell_idx).float()
+                cell_mask = (torch.arange(0, mem_vectors.shape[0], device=self.device) == cell_idx).float()
                 mask = torch.unsqueeze(cell_mask, dim=1)
                 mask = mask.repeat(1, self.mem_size)
 
-                # print(cell_idx, action_str, mem_vectors.shape[0])
                 if action_str == 'c':
-                    mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, mask, ent_counter)
-
-                    ent_counter = ent_counter + cell_mask
+                    mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter, mask)
+                    # self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter)
+                    ent_counter[cell_idx] = ent_counter[cell_idx] + 1
                     last_mention_start[cell_idx] = ment_start
                 elif action_str == 'o':
-                    if cell_idx == num_ents:
+                    if cell_idx == mem_vectors.shape[0]:
                         # Append the new vector
                         mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(query_vector, dim=0)], dim=0)
 
@@ -138,9 +136,9 @@ class MemoryPredInvalid(BaseMemory):
                             [last_mention_start, torch.tensor([ment_start], device=self.device)], dim=0)
                     else:
                         # Replace the cell content tracking another entity
-                        mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(query_vector, dim=0)
+                        mem_vectors[cell_idx] = query_vector
                         last_mention_start[cell_idx] = ment_start
-                        ent_counter = ent_counter * (1 - cell_mask) + cell_mask
+                        ent_counter[cell_idx] = ent_counter[cell_idx] + 1
 
             if self.mem_type == 'lru' and action_str in ['o', 'c']:
                 # Coref or overwrite was chosen; place the cell_idx in use at the back of the list

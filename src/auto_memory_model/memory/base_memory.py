@@ -150,30 +150,41 @@ class BaseMemory(nn.Module):
     @staticmethod
     def assign_cluster(coref_new_scores, first_overwrite):
         if first_overwrite:
-            num_ents = 0
+            return 0, 'o'
         else:
             num_ents = coref_new_scores.shape[0] - 1
+            pred_max_idx = torch.argmax(coref_new_scores).item()
+            if pred_max_idx < num_ents:
+                # Coref
+                return pred_max_idx, 'c'
+            else:
+                # New cluster
+                return num_ents, 'o'
 
-        pred_max_idx = torch.argmax(coref_new_scores).item()
-        if pred_max_idx < num_ents:
-            # Coref
-            return pred_max_idx, 'c'
-        else:
-            # New cluster
-            return num_ents, 'o'
-
-    def coref_update(self, mem_vectors, query_vector, cell_idx, mask, ent_counter):
+    def coref_update(self, mem_vectors, query_vector, cell_idx, ent_counter, mask):
         if self.entity_rep == 'learned_avg':
             alpha_wt = torch.sigmoid(
                 self.alpha(torch.cat([mem_vectors[cell_idx, :], query_vector], dim=0)))
-            avg_pool_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * query_vector
-            mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(avg_pool_vec, dim=0)
+            coref_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * query_vector
         elif self.entity_rep == 'max':
-            mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(
-                torch.max(mem_vectors[cell_idx, :], query_vector), dim=0)
+            coref_vec = torch.max(mem_vectors[cell_idx, :], query_vector)
+            # mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(
+            #     torch.max(mem_vectors[cell_idx, :], query_vector), dim=0)
+            # mem_vectors[cell_idx, :] = coref_vec
         else:
-            avg_vec = (mem_vectors[cell_idx] * ent_counter[cell_idx] + query_vector)/(ent_counter[cell_idx] + 1)
-            mem_vectors = mem_vectors * (1 - mask) + mask * avg_vec
+            # cluster_cnt = ent_counter[cell_idx].detach()
+            # avg_vec = (mem_vectors[cell_idx, :] * cluster_cnt + query_vector) / (cluster_cnt + 1)
+            # mem_vectors = mem_vectors * (1 - mask) + mask * avg_vec
+            mem_count = ent_counter[cell_idx].item()
+            coref_vec = (mem_vectors[cell_idx, :] * mem_count + query_vector)/(mem_count + 1)
 
+            # mem_vectors[cell_idx, :] = coref_vec
+        # mem_vectors = mem_vectors.index_copy(0, torch.tensor(cell_idx, device=mem_vectors.device),
+        #                                      torch.unsqueeze(coref_vec, dim=0))
+
+        mem_vectors = mem_vectors.index_copy(0, torch.tensor(cell_idx, device=mem_vectors.device),
+                                             torch.unsqueeze(coref_vec, dim=0))
+        # mem_vectors = mem_vectors * (1 - mask) + mask * coref_vec
         return mem_vectors
+#
 

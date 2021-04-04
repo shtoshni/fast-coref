@@ -87,7 +87,10 @@ class ControllerPredInvalid(BaseController):
             if len(coref_new_list) > 0:
                 coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
                 loss['coref'] = coref_loss
-                loss['total'] += loss['coref']
+                if loss['total'] is None:
+                    loss['total'] = loss['coref']
+                else:
+                    loss['total'] += loss['coref']
 
                 # Calculate new-ignore loss
                 if self.is_mem_bounded and len(new_ignore_list) > 0:

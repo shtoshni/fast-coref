@@ -253,6 +253,10 @@ class BaseController(nn.Module):
                 gt_idx = (1 if num_ents == 0 else num_ents)
                 if self.max_ents is None or num_ents < self.max_ents:
                     num_ents += 1
+
+                if num_ents == 1:
+                    # The first ent is always overwritten
+                    continue
             else:
                 continue
 
