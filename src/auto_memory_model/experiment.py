@@ -411,7 +411,7 @@ class Experiment:
         for key, val in vars(self.args).items():
             output_dict[key] = val
 
-        for split in ['dev', 'test']:
+        for split in ['dev', 'test', 'train']:
             # if self.train_with_singletons:
             #     cluster_thresholds = [1, 2]
             # else:

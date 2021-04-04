@@ -64,8 +64,11 @@ class ControllerPredInvalid(BaseController):
         """
         Encode a batch of excerpts.
         """
+        # NOTE: To get the singleton mentions, run with topk=True
+        # pred_mentions, mention_emb_list, mention_score_list, mention_loss = \
+        #     self.get_mention_embs(example, topk=True)
         pred_mentions, mention_emb_list, mention_score_list, mention_loss = \
-                self.get_mention_embs(example, ignore_invalid=True)
+            self.get_mention_embs(example, topk=False)
 
         follow_gt = self.training or teacher_forcing
         gt_actions = self.get_actions(example, pred_mentions)

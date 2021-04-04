@@ -34,12 +34,9 @@ def main():
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
-    parser.add_argument('-model_size', default='large', type=str,
-                        help='BERT model type')
+    parser.add_argument('-model_size', default='large', type=str, help='Model size')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-pretrained_bert_dir', default='../resources', type=str,
-                        help='SpanBERT model location')
     parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of windowed inputs.')
 

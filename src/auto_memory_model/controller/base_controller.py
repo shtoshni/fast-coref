@@ -166,7 +166,7 @@ class BaseController(nn.Module):
     #     filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
     #     return filt_cand_starts, filt_cand_ends
 
-    def get_pred_mentions(self, example, encoded_doc, topk=False, ignore_invalid=False):
+    def get_pred_mentions(self, example, encoded_doc, topk=False):
         # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
         num_words = encoded_doc.shape[0]
 
@@ -184,10 +184,10 @@ class BaseController(nn.Module):
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
-            # mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
             mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
             # print(topk_indices.shape)
-            if ignore_invalid:
+            if not topk:
+                # Ignore invalid mentions even during training
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
         else:
             if topk:
@@ -208,12 +208,11 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], mention_loss
 
-    def get_mention_embs(self, example, ignore_invalid=False):
+    def get_mention_embs(self, example, topk=False):
         encoded_doc = self.doc_encoder(example)
         mention_loss = None
         if not self.use_gold_ments:
-            pred_starts, pred_ends, pred_scores, mention_loss = self.get_pred_mentions(
-                example, encoded_doc, ignore_invalid=ignore_invalid)
+            pred_starts, pred_ends, pred_scores, mention_loss = self.get_pred_mentions(example, encoded_doc, topk=topk)
         else:
             mentions = []
             for cluster in example["clusters"]:

@@ -276,8 +276,7 @@ if __name__ == "__main__":
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     # for seg_len in [128, 256, 384, 512]:
-    # for seg_len in [1024, 1536, 2048, 4096]:
-    for seg_len in [1536]:
+    for seg_len in [1024, 1536, 2048, 4096]:
         labels = collections.defaultdict(set)
         stats = collections.defaultdict(int)
         minimize_split(seg_len, input_dir, output_dir, stats)

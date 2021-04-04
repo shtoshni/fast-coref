@@ -73,6 +73,10 @@ class MemoryPredInvalid(BaseMemory):
         # print(len(gt_actions), len(mention_emb_list))
         for ment_idx, ((ment_start, ment_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
                 enumerate(zip(ment_boundaries, mention_emb_list, mention_scores, gt_actions)):
+            if (not self.training) and ment_score < 0:
+                action_list.append((-1, 'i'))
+                continue
+
             query_vector = ment_emb
             num_ents = mem_vectors.shape[0]
             # metadata['last_action'] = self.action_str_to_idx[last_action_str]
