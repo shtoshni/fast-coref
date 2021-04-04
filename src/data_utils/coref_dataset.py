@@ -53,6 +53,7 @@ class CorefDataset(Dataset):
             instance["start_indices"] = start_indices
             instance["end_indices"] = end_indices
 
+
         output_dict = {}
         sentences = [([self.tokenizer.cls_token] + sent + [self.tokenizer.sep_token])
                      for sent in instance["real_sentences"]]

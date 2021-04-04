@@ -1,6 +1,5 @@
 import torch.nn as nn
-from transformers import LongformerTokenizerFast, AutoModel
-import torch
+from transformers import LongformerModel
 
 
 class BaseDocEncoder(nn.Module):
@@ -16,15 +15,16 @@ class BaseDocEncoder(nn.Module):
 
         gradient_checkpointing = False
         if finetune:
-            if torch.cuda.is_available():
-                gradient_checkpointing = True
-                memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
-                if memory_in_gb > 40:
-                    gradient_checkpointing = False
+            gradient_checkpointing = True
+            # if torch.cuda.is_available():
+            #     gradient_checkpointing = True
+            #     memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
+            #     if memory_in_gb > 40:
+            #         gradient_checkpointing = False
 
             print(f"Gradient Checkpointing: {gradient_checkpointing}\n")
 
-        self.lm_encoder = AutoModel.from_pretrained(
+        self.lm_encoder = LongformerModel.from_pretrained(
             f"allenai/longformer-{model_size}-4096", output_hidden_states=False,
             gradient_checkpointing=gradient_checkpointing)
 

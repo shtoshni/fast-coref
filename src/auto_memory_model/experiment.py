@@ -45,10 +45,6 @@ class Experiment:
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.dataset = dataset
-        self.train_examples, self.dev_examples, self.test_examples \
-            = load_data(data_dir, max_segment_len, dataset=self.dataset, singleton_file=singleton_file,
-                        num_train_docs=args.num_train_docs, num_eval_docs=args.num_eval_docs,
-                        max_training_segments=args.max_training_segments, num_workers=2)
 
         self.finetune = (fine_tune_lr is not None)
         self.train_with_singletons = train_with_singletons
@@ -58,7 +54,6 @@ class Experiment:
         else:
             self.cluster_threshold = 2
             # Remove singletons from training set
-            # self.train_examples = remove_singletons(self.train_examples)
 
         self.canonical_cluster_threshold = 1
         if self.dataset == 'litbank':
@@ -70,8 +65,6 @@ class Experiment:
             self.update_frequency = 100
             self.max_stuck_epochs = 10
             self.canonical_cluster_threshold = 2
-
-        self.data_iter_map = {"train": self.train_examples, "dev": self.dev_examples, "test": self.test_examples}
 
         self.max_epochs = max_epochs
         self.slurm_id = slurm_id  # Useful to keep this around for grid searches
@@ -109,9 +102,11 @@ class Experiment:
                 if args.top_span_ratio is not None:
                     self.model.top_span_ratio = args.top_span_ratio
 
+            self.data_iter_map = self.load_data(args, training=False)
             self.final_eval()
         else:
             # Initialize model and training metadata
+            self.data_iter_map = self.load_data(args, training=True)
             self.model = pick_controller(
                 mem_type=mem_type, dataset=dataset, device=self.device,
                 finetune=self.finetune, **kwargs).to(self.device)
@@ -126,7 +121,14 @@ class Experiment:
 
             self.load_model(self.best_model_path, model_type='best')
             logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
+
+            self.data_iter_map = self.load_data(args, training=False)
             self.final_eval()
+
+    def load_data(self, args, training=True):
+        return load_data(args.data_dir, args.max_segment_len, dataset=self.dataset, singleton_file=args.singleton_file,
+                         num_train_docs=args.num_train_docs, num_eval_docs=args.num_eval_docs,
+                         max_training_segments=args.max_training_segments, num_workers=2, training=training)
 
     def initialize_setup(self, init_lr, fine_tune_lr):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
@@ -142,7 +144,7 @@ class Experiment:
                 else:
                     other_params.append(param)
 
-        num_training_steps = len(self.train_examples) * self.max_epochs
+        num_training_steps = len(self.data_iter_map['train']) * self.max_epochs
 
         self.optimizer['mem'] = torch.optim.AdamW(
             other_params, lr=init_lr, eps=1e-6, weight_decay=0)
@@ -183,7 +185,7 @@ class Experiment:
             # Setup training
             model.train()
 
-            for cur_example in self.train_examples:
+            for cur_example in self.data_iter_map['train']:
                 def handle_example(example):
                     # Backprop
                     for key in optimizer:

@@ -7,7 +7,7 @@ import torch
 
 def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None,
               num_train_docs=None, num_eval_docs=None, max_training_segments=None,
-              num_workers=0):
+              num_workers=0, training=True):
     all_splits = []
     for split in ["train", "dev", "test"]:
         jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
@@ -41,14 +41,20 @@ def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None,
         assert (len(dev_data) == 343)
         assert (len(test_data) == 348)
 
-    tokenizer = LongformerTokenizerFast.from_pretrained(f'allenai/longformer-large-4096', add_prefix_space=True)
+    tokenizer = LongformerTokenizerFast.from_pretrained(f'allenai/longformer-large-4096', add_prefix_space=False)
 
-    train_dataset = CorefDataset(train_data[:num_train_docs], tokenizer,
-                                 max_training_segments=max_training_segments)
-    train_dataloader = torch.utils.data.DataLoader(
-            train_dataset, num_workers=num_workers, pin_memory=True,
-            batch_size=None, shuffle=True,
-    )
+    if training:
+        train_dataset = CorefDataset(train_data[:num_train_docs], tokenizer,
+                                     max_training_segments=max_training_segments)
+        train_dataloader = torch.utils.data.DataLoader(
+                train_dataset, num_workers=num_workers, pin_memory=True,
+                batch_size=None, shuffle=True,
+        )
+    else:
+        train_dataloader = torch.utils.data.DataLoader(
+            CorefDataset(train_data[:num_train_docs], tokenizer), num_workers=num_workers, pin_memory=True,
+            batch_sampler=None, batch_size=None, shuffle=False,
+        )
 
     val_dataloader = torch.utils.data.DataLoader(
         CorefDataset(dev_data[:num_eval_docs], tokenizer), num_workers=num_workers, pin_memory=True,
@@ -56,8 +62,8 @@ def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None,
     )
 
     test_dataloader = torch.utils.data.DataLoader(
-        CorefDataset(test_data[:num_eval_docs], tokenizer), num_workers=0, pin_memory=False,
+        CorefDataset(test_data[:num_eval_docs], tokenizer), num_workers=0, pin_memory=True,
         batch_sampler=None, batch_size=None, shuffle=False,
     )
 
-    return train_dataloader, val_dataloader, test_dataloader
+    return {"train": train_dataloader, "dev": val_dataloader, "test": test_dataloader}

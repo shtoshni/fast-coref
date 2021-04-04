@@ -23,14 +23,16 @@ def main():
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument('-base_model_dir',
                         default='../models', help='Root folder storing model runs', type=str)
+    parser.add_argument('-singleton_file', default=None,
+                        help='Singleton mentions separately extracted for training.')
     parser.add_argument('-model_size', default='large', type=str,
-                        help='BERT model type')
+                        help='Model size')
     parser.add_argument('-doc_enc', default='overlap', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-pretrained_bert_dir', default='../resources', type=str,
-                        help='SpanBERT model location')
-    parser.add_argument('-max_segment_len', default=512, type=int,
+    parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of BERT segments.')
+    parser.add_argument('-max_training_segments', default=1, type=int,
+                        help='Maximum number of BERT segments in a document.')
     parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
 
@@ -49,19 +51,23 @@ def main():
                         help='Batch size', default=1, type=int)
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
+    parser.add_argument('-num_eval_docs', default=None, type=int,
+                        help='Number of evaluation docs.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
     parser.add_argument('-max_epochs',
-                        help='Maximum number of epochs', default=25, type=int)
+                        help='Maximum number of epochs', default=10, type=int)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=5e-4, type=float)
+    parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
+                        default=None, type=float)
     parser.add_argument('-train_with_singletons', default=False, action="store_true",
                         help='Whether to use singletons during training or not.')
     parser.add_argument('-checkpoint', help="Use checkpoint",
                         default=False, action="store_true")
-    parser.add_argument('-eval', help="Evaluate model",
+    parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",
                         default=None, type=str)
@@ -86,7 +92,7 @@ def main():
         else:
             args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}')
 
-    Experiment(**vars(args))
+    Experiment(args, **vars(args))
 
 
 if __name__ == "__main__":

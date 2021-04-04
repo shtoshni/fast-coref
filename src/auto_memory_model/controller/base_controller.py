@@ -140,32 +140,6 @@ class BaseController(nn.Module):
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-    # def get_candidate_endpoints(self, encoded_doc, example):
-    #     num_words = encoded_doc.shape[0]
-    #
-    #     sent_map = torch.tensor(example["sentence_map"], device=self.device)
-    #
-    #     cand_starts = (torch.unsqueeze(torch.arange(num_words, device=self.device), dim=1)).\
-    #         repeat(1, self.max_span_width)
-    #     cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width, device=self.device), dim=0)
-    #
-    #     cand_start_sent_indices = sent_map[cand_starts]
-    #     # Avoid getting sentence indices for cand_ends >= num_words
-    #     corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
-    #     cand_end_sent_indices = sent_map[corr_cand_ends]
-    #
-    #     # End before document ends & Same sentence
-    #     constraint1 = (cand_ends < num_words)
-    #     constraint2 = (cand_start_sent_indices == cand_end_sent_indices)
-    #
-    #     cand_mask = constraint1 & constraint2
-    #     flat_cand_mask = cand_mask.reshape(-1)
-    #
-    #     # Filter and flatten the candidate end points
-    #     filt_cand_starts = cand_starts.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-    #     filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
-    #     return filt_cand_starts, filt_cand_ends
-
     def get_pred_mentions(self, example, encoded_doc, topk=False):
         # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
         num_words = encoded_doc.shape[0]
@@ -179,12 +153,13 @@ class BaseController(nn.Module):
         mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
         k = int(self.top_span_ratio * num_words)
-
+        # k = int(0.2 * num_words)
         mention_loss = None
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
-            mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+            mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
+            # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
             # print(topk_indices.shape)
             if not topk:
                 # Ignore invalid mentions even during training
@@ -194,9 +169,6 @@ class BaseController(nn.Module):
                 topk_indices = torch.topk(mention_logits, k)[1]
             else:
                 topk_indices = torch.squeeze((mention_logits >= 0.0).nonzero(as_tuple=False), dim=1)
-                # if k > topk_indices.shape[0]:
-                if k < topk_indices.shape[0]:
-                    topk_indices = torch.topk(mention_logits, k)[1]
 
         topk_starts = filt_cand_starts[topk_indices]
         topk_ends = filt_cand_ends[topk_indices]

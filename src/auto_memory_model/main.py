@@ -67,8 +67,6 @@ def main():
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
                         help='Cross validation split to be used.')
-    parser.add_argument('-use_curriculum', default=False, action="store_true",
-                        help='Use curriculum learning by increasing max document length during training.')
     parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
                         default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
@@ -131,10 +129,6 @@ def main():
         # Cross-validation split is only important for litbank
         imp_opts.append('cross_val_split')
 
-    args.max_span_width = 20
-    if args.dataset == 'ontonotes':
-        args.max_span_width = 30
-
     for key, val in vars(args).items():
         if key in imp_opts:
             opt_dict[key] = val
@@ -142,6 +136,9 @@ def main():
     str_repr = str(opt_dict.items())
     hash_idx = hashlib.md5(str_repr.encode("utf-8")).hexdigest()
     model_name = f"longformer_{args.dataset}_" + str(hash_idx)
+
+    if args.eval_model:
+        args.max_training_segments = None
 
     if args.model_dir is None:
         model_dir = path.join(args.base_model_dir, model_name)

@@ -28,6 +28,8 @@ class OverlapDocEncoder(BaseDocEncoder):
         else:
             outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
 
+        outputs = self.lm_encoder(doc_tens)
+        #, attention_mask=attn_mask)
         encoded_repr = outputs[0]
 
         unpadded_encoded_output = []
