@@ -62,7 +62,7 @@ class MemoryNoInvalid(BaseMemory):
 
                 # print(cell_idx, action_str, mem_vectors.shape[0])
                 if action_str == 'c':
-                    mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter, mask)
+                    mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter)
 
                     ent_counter = ent_counter + cell_mask
                     last_mention_idx[cell_idx] = ment_idx

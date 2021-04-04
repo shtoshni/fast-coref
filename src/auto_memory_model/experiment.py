@@ -7,6 +7,7 @@ import torch
 import json
 from collections import defaultdict, OrderedDict
 import numpy as np
+import random
 from transformers import get_linear_schedule_with_warmup, AdamW
 
 from auto_memory_model.utils import action_sequences_to_clusters
@@ -15,7 +16,6 @@ from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
-from coref_utils.utils import remove_singletons
 from auto_memory_model.controller.utils import pick_controller
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -37,6 +37,9 @@ class Experiment:
 
         # Set the random seed first
         self.seed = seed
+        torch.random.manual_seed(self.seed)
+        random.seed(self.seed)
+
         self.model_args = vars(args)
         self.pretrained_mention_model = pretrained_mention_model
 
@@ -111,7 +114,7 @@ class Experiment:
             # Initialize model and training metadata
             self.model = pick_controller(
                 mem_type=mem_type, dataset=dataset, device=self.device,
-                finetune=self.finetune, **kwargs)
+                finetune=self.finetune, **kwargs).to(self.device)
 
             # Train info is a dictionary to keep around important training variables
             self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
@@ -119,7 +122,6 @@ class Experiment:
             utils.print_model_info(self.model)
             sys.stdout.flush()
 
-            self.model = self.model.to(self.device)
             self.train(max_gradient_norm=max_gradient_norm)
 
             self.load_model(self.best_model_path, model_type='best')
@@ -194,6 +196,10 @@ class Experiment:
                     if total_loss is None:
                         return None
 
+                    if torch.isnan(total_loss):
+                        print("Loss is NaN")
+                        sys.exit()
+
                     total_loss.backward()
                     # Perform gradient clipping and update parameters
                     torch.nn.utils.clip_grad_norm_(
@@ -206,8 +212,7 @@ class Experiment:
                     self.train_info['global_steps'] += 1
                     return total_loss.item()
 
-                with torch.autograd.set_detect_anomaly(True):
-                    example_loss = handle_example(cur_example)
+                example_loss = handle_example(cur_example)
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -244,7 +249,7 @@ class Experiment:
             # Save model
             if self.dataset == 'litbank':
                 # Can train LitBank in one slurm job - Save Disk I/o time
-                if epoch == self.max_epochs - 1:
+                if (epoch + 1) % 10 == 0:
                     self.save_model(self.model_path)
             else:
                 self.save_model(self.model_path)

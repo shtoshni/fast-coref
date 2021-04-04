@@ -17,10 +17,12 @@ class BaseDocEncoder(nn.Module):
         gradient_checkpointing = False
         if finetune:
             if torch.cuda.is_available():
+                gradient_checkpointing = True
                 memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
-                if memory_in_gb < 40:
-                    gradient_checkpointing = True
-                gradient_checkpointing = False
+                if memory_in_gb > 40:
+                    gradient_checkpointing = False
+
+            print(f"Gradient Checkpointing: {gradient_checkpointing}\n")
 
         self.lm_encoder = AutoModel.from_pretrained(
             f"allenai/longformer-{model_size}-4096", output_hidden_states=False,

@@ -161,30 +161,16 @@ class BaseMemory(nn.Module):
                 # New cluster
                 return num_ents, 'o'
 
-    def coref_update(self, mem_vectors, query_vector, cell_idx, ent_counter, mask):
+    def coref_update(self, mem_vectors, query_vector, cell_idx, ent_counter):
         if self.entity_rep == 'learned_avg':
             alpha_wt = torch.sigmoid(
                 self.alpha(torch.cat([mem_vectors[cell_idx, :], query_vector], dim=0)))
             coref_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * query_vector
         elif self.entity_rep == 'max':
-            coref_vec = torch.max(mem_vectors[cell_idx, :], query_vector)
-            # mem_vectors = mem_vectors * (1 - mask) + mask * torch.unsqueeze(
-            #     torch.max(mem_vectors[cell_idx, :], query_vector), dim=0)
-            # mem_vectors[cell_idx, :] = coref_vec
+            coref_vec = torch.max(mem_vectors[cell_idx], query_vector)
         else:
-            # cluster_cnt = ent_counter[cell_idx].detach()
-            # avg_vec = (mem_vectors[cell_idx, :] * cluster_cnt + query_vector) / (cluster_cnt + 1)
-            # mem_vectors = mem_vectors * (1 - mask) + mask * avg_vec
-            mem_count = ent_counter[cell_idx].item()
-            coref_vec = (mem_vectors[cell_idx, :] * mem_count + query_vector)/(mem_count + 1)
+            cluster_count = ent_counter[cell_idx].item()
+            coref_vec = (mem_vectors[cell_idx] * cluster_count + query_vector)/(cluster_count + 1)
 
-            # mem_vectors[cell_idx, :] = coref_vec
-        # mem_vectors = mem_vectors.index_copy(0, torch.tensor(cell_idx, device=mem_vectors.device),
-        #                                      torch.unsqueeze(coref_vec, dim=0))
-
-        mem_vectors = mem_vectors.index_copy(0, torch.tensor(cell_idx, device=mem_vectors.device),
-                                             torch.unsqueeze(coref_vec, dim=0))
-        # mem_vectors = mem_vectors * (1 - mask) + mask * coref_vec
-        return mem_vectors
-#
+        return coref_vec
 
