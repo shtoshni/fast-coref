@@ -263,7 +263,7 @@ def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
 
 
 def minimize_split(seg_len, input_dir, output_dir, stats):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=False)
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
 
     minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
     minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)

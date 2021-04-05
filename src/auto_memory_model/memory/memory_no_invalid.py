@@ -6,34 +6,29 @@ class MemoryNoInvalid(BaseMemory):
     def __init__(self, **kwargs):
         super(MemoryNoInvalid, self).__init__(**kwargs)
 
-    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata,
-                rand_fl_list=None, teacher_forcing=False):
+    def forward(self, mention_emb_list, mention_scores, gt_actions, metadata, teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_idx = self.initialize_memory()
 
         action_logit_list = []
         action_list = []  # argmax actions
         first_overwrite = True
-        last_action_str = '<s>'
 
         follow_gt = self.training or teacher_forcing
 
-        for ment_idx, (ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mention_emb_list, mention_scores, gt_actions)):
+        for ment_idx, (ment_emb, (gt_cell_idx, gt_action_str)) in enumerate(zip(mention_emb_list, gt_actions)):
             query_vector = ment_emb
-            metadata['last_action'] = self.action_str_to_idx[last_action_str]
             feature_embs = self.get_feature_embs(ment_idx, last_mention_idx, ent_counter, metadata)
 
-            # Sample invalid spans during training
-            ign_invalid_span = (follow_gt and gt_action_str == 'i')
-            if ign_invalid_span:
-                continue
+            if first_overwrite:
+                pred_cell_idx, pred_action_str = 0, 'o'
+            else:
+                coref_new_scores = self.get_coref_new_scores(
+                    query_vector, mem_vectors, ent_counter, feature_embs, ment_score=mention_scores[ment_idx])
 
-            coref_new_scores = self.get_coref_new_scores(
-                query_vector, mem_vectors, ent_counter, feature_embs, ment_score=ment_score)
+                pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
+                action_logit_list.append(coref_new_scores)
 
-            pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores, first_overwrite)
-            action_logit_list.append(coref_new_scores)
             action_list.append((pred_cell_idx, pred_action_str))
 
             if follow_gt:
@@ -45,8 +40,6 @@ class MemoryNoInvalid(BaseMemory):
                 action_str = pred_action_str
                 cell_idx = pred_cell_idx
 
-            last_action_str = action_str
-
             if first_overwrite:
                 first_overwrite = False
                 # We start with a single empty memory cell
@@ -56,13 +49,17 @@ class MemoryNoInvalid(BaseMemory):
             else:
                 num_ents = mem_vectors.shape[0]
                 # Update the memory
-                cell_mask = (torch.arange(0, num_ents, device=self.device) == cell_idx)
+                cell_mask = (torch.arange(0, num_ents, device=self.device) == cell_idx).float()
                 mask = torch.unsqueeze(cell_mask, dim=1)
                 mask = mask.repeat(1, self.mem_size)
 
                 # print(cell_idx, action_str, mem_vectors.shape[0])
                 if action_str == 'c':
-                    mem_vectors = self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter)
+                    coref_vec = self.coref_update(mem_vectors, query_vector, cell_idx, ent_counter)
+                    if self.training:
+                        mem_vectors = mem_vectors * (1 - mask) + mask * coref_vec
+                    else:
+                        mem_vectors[cell_idx] = coref_vec
 
                     ent_counter = ent_counter + cell_mask
                     last_mention_idx[cell_idx] = ment_idx

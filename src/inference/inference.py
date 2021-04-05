@@ -20,7 +20,7 @@ class Inference:
         self.model.eval()  # Eval mode
 
         self.tokenizer = LongformerTokenizerFast.from_pretrained(
-            'allenai/longformer-large-4096', add_prefix_space=False)
+            'allenai/longformer-large-4096', add_prefix_space=True)
 
     def perform_coreference(self, doc, doc_key="nw", num_sents=None):
         if isinstance(doc, str):

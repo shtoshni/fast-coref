@@ -57,6 +57,8 @@ def main():
                         help="Number of maximum entities in memory during inference.")
     parser.add_argument('-mlp_size', default=3000, type=int,
                         help='MLP size used in the model')
+    parser.add_argument('-cluster_mlp_size', default=3000, type=int,
+                        help='MLP size used in the model')
     parser.add_argument('-mlp_depth', default=1, type=int,
                         help='Number of hidden layers in other MLPs')
     parser.add_argument('-entity_rep', default='wt_avg', type=str,
@@ -67,8 +69,6 @@ def main():
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
                         help='Cross validation split to be used.')
-    parser.add_argument('-new_ent_wt', help='Weight of new entity term in coref loss',
-                        default=1.0, type=float)
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
@@ -104,11 +104,14 @@ def main():
     # Only include important options in hash computation
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
-                'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
+                'mem_type', 'entity_rep', 'mlp_size',  # Memory params
                 'dropout_rate', 'seed', 'init_lr',
-                "new_ent_wt", 'max_training_segments', 'label_smoothing_wt',  # weights & sampling
+                'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
+
+    if args.cluster_mlp_size != args.mlp_size:
+        imp_opts.append('cluster_mlp_size')
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
         imp_opts.append('singleton_file')

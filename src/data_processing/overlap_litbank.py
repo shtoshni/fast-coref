@@ -248,7 +248,7 @@ def minimize_partition(split, cross_val_split, labels, stats, tokenizer,
 
 def minimize_split(labels, stats, cross_val_split, seg_len, input_dir, output_dir):
     # do_lower_case = True if 'chinese' in vocab_file else False
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=False)
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
     # Create cross validation output dir
     cross_val_dir = path.join(output_dir, str(cross_val_split))
     if not path.exists(cross_val_dir):
