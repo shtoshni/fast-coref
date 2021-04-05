@@ -111,13 +111,13 @@ class Experiment:
                 mem_type=mem_type, dataset=dataset, device=self.device,
                 finetune=self.finetune, **kwargs).to(self.device)
 
+            # Train info is a dictionary to keep around important training variables
+            self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
+            self.initialize_setup(init_lr=init_lr, fine_tune_lr=fine_tune_lr)
+
             if path.exists(self.model_path):
                 logging.info('Loading previous model: %s' % self.model_path)
                 self.load_model(self.model_path)
-            else:
-                # Train info is a dictionary to keep around important training variables
-                self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
-                self.initialize_setup(init_lr=init_lr, fine_tune_lr=fine_tune_lr)
 
             utils.print_model_info(self.model)
             self.train(max_gradient_norm=max_gradient_norm)
