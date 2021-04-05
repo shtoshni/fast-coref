@@ -68,6 +68,17 @@ class BaseController(nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
         self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
 
+    def get_params(self, named=False):
+        encoder_params, mem_params = [], []
+        for name, param in self.named_parameters():
+            elem = (name, param) if named else param
+            if name.startswith('doc_encoder'):
+                encoder_params.append(elem)
+            else:
+                mem_params.append(elem)
+
+        return encoder_params, mem_params
+
     def set_max_ents(self, max_ents):
         self.max_ents = max_ents
         self.memory_net.max_ents = max_ents
@@ -158,9 +169,7 @@ class BaseController(nn.Module):
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
-            mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
-            # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
-            # print(topk_indices.shape)
+            mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
             if not topk:
                 # Ignore invalid mentions even during training
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
@@ -196,9 +205,7 @@ class BaseController(nn.Module):
             pred_scores = torch.tensor([1.0] * len(mentions), device=self.device)
 
         # Sort the predicted mentions
-        pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
-        pred_scores = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
-
+        pred_mentions = torch.stack((pred_starts, pred_ends), dim=1)
         mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)

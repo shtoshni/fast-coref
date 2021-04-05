@@ -1,5 +1,6 @@
 import torch.nn as nn
 from transformers import LongformerModel
+import torch
 
 
 class BaseDocEncoder(nn.Module):
@@ -16,11 +17,10 @@ class BaseDocEncoder(nn.Module):
         gradient_checkpointing = False
         if finetune:
             gradient_checkpointing = True
-            # if torch.cuda.is_available():
-            #     gradient_checkpointing = True
-            #     memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
-            #     if memory_in_gb > 40:
-            #         gradient_checkpointing = False
+            if torch.cuda.is_available():
+                memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
+                if memory_in_gb > 40:
+                    gradient_checkpointing = False
 
             print(f"Gradient Checkpointing: {gradient_checkpointing}\n")
 

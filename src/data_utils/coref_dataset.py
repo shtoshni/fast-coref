@@ -2,6 +2,7 @@ from torch.utils.data.dataset import Dataset
 from copy import deepcopy
 import random
 import torch
+from pytorch_utils.utils import enough_memory
 
 
 class CorefDataset(Dataset):
@@ -10,6 +11,7 @@ class CorefDataset(Dataset):
         self.tokenizer = tokenizer
         self.split_data = split_data
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.is_enough_memory = True  # enough_memory()
 
     def __len__(self):
         return len(self.split_data)
@@ -53,7 +55,6 @@ class CorefDataset(Dataset):
             instance["start_indices"] = start_indices
             instance["end_indices"] = end_indices
 
-
         output_dict = {}
         sentences = [([self.tokenizer.cls_token] + sent + [self.tokenizer.sep_token])
                      for sent in instance["real_sentences"]]
@@ -64,6 +65,7 @@ class CorefDataset(Dataset):
 
         output_dict["padded_sent"] = torch.tensor(padded_sent)
         output_dict["sent_len_list"] = torch.tensor(sent_len_list)
+
         output_dict["doc_key"] = instance["doc_key"]
         output_dict["clusters"] = instance["clusters"]
         output_dict["subtoken_map"] = instance["subtoken_map"]

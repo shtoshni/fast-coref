@@ -67,18 +67,19 @@ class ControllerPredInvalid(BaseController):
         # NOTE: To get the singleton mentions, run with topk=True
         # pred_mentions, mention_emb_list, mention_score_list, mention_loss = \
         #     self.get_mention_embs(example, topk=True)
-        pred_mentions, mention_emb_list, mention_score_list, mention_loss = \
+        pred_mentions, mention_emb_list, mention_scores, mention_loss = \
             self.get_mention_embs(example, topk=False)
 
         follow_gt = self.training or teacher_forcing
-        gt_actions = self.get_actions(example, pred_mentions)
+        pred_mentions_list = pred_mentions.tolist()
+        gt_actions = self.get_actions(example, pred_mentions_list)
 
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
         coref_new_list, new_ignore_list, action_list = self.memory_net(
-            pred_mentions, mention_emb_list, mention_score_list, gt_actions, metadata,
+            pred_mentions, mention_emb_list, gt_actions, metadata,
             teacher_forcing=teacher_forcing)
         loss = {'total': None}
         if follow_gt:
@@ -101,5 +102,4 @@ class ControllerPredInvalid(BaseController):
                     loss['total'] += loss['ignore']
             return loss, action_list, pred_mentions, gt_actions
         else:
-            mention_scores = [mention_score.item() for mention_score in mention_score_list]
-            return 0.0, action_list, pred_mentions, mention_scores, gt_actions
+            return 0.0, action_list, pred_mentions_list, mention_scores.tolist(), gt_actions

@@ -55,7 +55,7 @@ class MemoryPredInvalid(BaseMemory):
             # No space - The new entity is not "fertile" enough
             return output + (-1, 'n')
 
-    def forward(self, ment_boundaries, mention_emb_list, mention_scores, gt_actions, metadata,
+    def forward(self, ment_boundaries, mention_emb_list, gt_actions, metadata,
                 teacher_forcing=False):
         # Initialize memory
         mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
@@ -71,12 +71,9 @@ class MemoryPredInvalid(BaseMemory):
         follow_gt = self.training or teacher_forcing
 
         # print(len(gt_actions), len(mention_emb_list))
-        for ment_idx, ((ment_start, ment_end), ment_emb, ment_score, (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(ment_boundaries, mention_emb_list, mention_scores, gt_actions)):
-            if (not self.training) and ment_score < 0:
-                action_list.append((-1, 'i'))
-                continue
-
+        for ment_idx, (ment_emb, (gt_cell_idx, gt_action_str)) in \
+                enumerate(zip(mention_emb_list, gt_actions)):
+            ment_start, ment_end = ment_boundaries[ment_idx]
             query_vector = ment_emb
             num_ents = mem_vectors.shape[0]
             # metadata['last_action'] = self.action_str_to_idx[last_action_str]
@@ -147,7 +144,7 @@ class MemoryPredInvalid(BaseMemory):
 
                         ent_counter = torch.cat([ent_counter, torch.tensor([1.0], device=self.device)], dim=0)
                         last_mention_start = torch.cat(
-                            [last_mention_start, torch.tensor([ment_start], device=self.device)], dim=0)
+                            [last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
                     else:
                         # Replace the cell content tracking another entity
                         if self.training:

@@ -52,13 +52,13 @@ def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None,
         )
     else:
         train_dataloader = torch.utils.data.DataLoader(
-            CorefDataset(train_data[:num_train_docs], tokenizer), num_workers=num_workers, pin_memory=True,
-            batch_sampler=None, batch_size=None, shuffle=False,
+            CorefDataset(train_data[:num_train_docs], tokenizer), num_workers=num_workers,
+            batch_sampler=None, batch_size=None, shuffle=False, pin_memory=True,
         )
 
     val_dataloader = torch.utils.data.DataLoader(
-        CorefDataset(dev_data[:num_eval_docs], tokenizer), num_workers=num_workers, pin_memory=True,
-        batch_sampler=None, batch_size=None, shuffle=False,
+        CorefDataset(dev_data[:num_eval_docs], tokenizer), num_workers=num_workers,
+        batch_sampler=None, batch_size=None, shuffle=False, pin_memory=True,
     )
 
     test_dataloader = torch.utils.data.DataLoader(

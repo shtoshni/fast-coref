@@ -20,7 +20,11 @@ class OverlapDocEncoder(BaseDocEncoder):
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
         num_chunks = sent_len_list.shape[0]
-        attn_mask = get_sequence_mask(sent_len_list.to(self.device))
+
+        if num_chunks == 1:
+            attn_mask = None
+        else:
+            attn_mask = get_sequence_mask(sent_len_list.to(self.device))
 
         if not self.finetune:
             with torch.no_grad():
@@ -28,8 +32,6 @@ class OverlapDocEncoder(BaseDocEncoder):
         else:
             outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
 
-        outputs = self.lm_encoder(doc_tens)
-        #, attention_mask=attn_mask)
         encoded_repr = outputs[0]
 
         unpadded_encoded_output = []

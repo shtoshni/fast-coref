@@ -16,6 +16,15 @@ def print_model_info(model):
     print("\nTotal Params:{:.2f} (in millions)".format(total_params/10**6))
 
 
+def enough_memory():
+    if torch.cuda.is_available():
+        memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024 ** 3)
+        if memory_in_gb > 40:
+            return True
+
+    return False
+
+
 def get_sequence_mask(sequence_len):
     """Returns Sequence Mask.
     sequence_len: Tensor of size (B,) with entries indicating length of seq.

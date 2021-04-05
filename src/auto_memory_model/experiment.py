@@ -111,12 +111,15 @@ class Experiment:
                 mem_type=mem_type, dataset=dataset, device=self.device,
                 finetune=self.finetune, **kwargs).to(self.device)
 
-            # Train info is a dictionary to keep around important training variables
-            self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
-            self.initialize_setup(init_lr=init_lr, fine_tune_lr=fine_tune_lr)
-            utils.print_model_info(self.model)
-            sys.stdout.flush()
+            if path.exists(self.model_path):
+                logging.info('Loading previous model: %s' % self.model_path)
+                self.load_model(self.model_path)
+            else:
+                # Train info is a dictionary to keep around important training variables
+                self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
+                self.initialize_setup(init_lr=init_lr, fine_tune_lr=fine_tune_lr)
 
+            utils.print_model_info(self.model)
             self.train(max_gradient_norm=max_gradient_norm)
 
             self.load_model(self.best_model_path, model_type='best')
@@ -132,42 +135,33 @@ class Experiment:
 
     def initialize_setup(self, init_lr, fine_tune_lr):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
-        other_params = []
-        encoder_params = []
-        encoder_param_names = set([name for name, _ in self.model.named_parameters() if "lm_encoder." in name])
-
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                if name in encoder_param_names:
-                    encoder_params.append(param)
-                    continue
-                else:
-                    other_params.append(param)
+        torch.random.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
 
         num_training_steps = len(self.data_iter_map['train']) * self.max_epochs
+        num_warmup_steps = int(0.1 * num_training_steps)
 
-        self.optimizer['mem'] = torch.optim.AdamW(
-            other_params, lr=init_lr, eps=1e-6, weight_decay=0)
-        # self.optimizer_params['mem'] = other_params  # Useful in gradient clipping
+        self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=init_lr, eps=1e-6)
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=num_training_steps)
-        if fine_tune_lr is not None:
-            self.optimizer['doc'] = AdamW(encoder_params, lr=fine_tune_lr, eps=1e-6, weight_decay=1e-2)
-            self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
-                self.optimizer['doc'], num_warmup_steps=0, num_training_steps=num_training_steps)
+            self.optimizer['mem'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
-        if not path.exists(self.model_path):
-            torch.manual_seed(self.seed)
-            np.random.seed(self.seed)
-            # Try to initialize the mention model part
-            if path.exists(self.pretrained_mention_model):
-                print("Found pretrained model!!")
-                checkpoint = torch.load(self.pretrained_mention_model)
-                self.model.load_state_dict(checkpoint['model'], strict=False)
-        else:
-            logging.info('Loading previous model: %s' % self.model_path)
-            # Load model
-            self.load_model(self.model_path)
+        if fine_tune_lr is not None:
+            no_decay = ['bias', 'LayerNorm.weight']
+            encoder_params = self.model.get_params(named=True)[0]
+            grouped_param = [
+                {'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
+                 'lr': fine_tune_lr,
+                 'weight_decay': 1e-2},
+                {'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
+                 'lr': fine_tune_lr,
+                 'weight_decay': 0.0}
+            ]
+
+            self.optimizer['doc'] = AdamW(grouped_param, lr=fine_tune_lr)
+
+            self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
+                self.optimizer['doc'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
     def train(self, max_gradient_norm):
         """Train model"""

@@ -36,7 +36,7 @@ class Controller(BaseController):
             # Calculate Recall
             k = int(self.top_span_ratio * num_words)
             topk_indices = torch.topk(mention_logits, k)[1]
-            topk_indices_mask = torch.zeros_like(mention_logits).cuda()
+            topk_indices_mask = torch.zeros_like(mention_logits, device=mention_logits.device)
             topk_indices_mask[topk_indices] = 1
             recall = torch.sum(filt_gold_mentions * topk_indices_mask).item()
 
@@ -49,5 +49,5 @@ class Controller(BaseController):
             _, sorted_indices = torch.sort(sort_scores, 0)
 
             pred_mentions = list(zip(topk_starts[sorted_indices].tolist(), topk_ends[sorted_indices].tolist()))
-            mention_scores = [mention_score.item() for mention_score in topk_scores[sorted_indices]]
+            mention_scores = topk_scores[sorted_indices].tolist()
             return pred_mentions, mention_scores, recall, torch.sum(filt_gold_mentions).item()
