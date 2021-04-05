@@ -8,7 +8,7 @@ LOG2 = math.log(2)
 
 class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, drop_module=None,
-                 emb_size=20, entity_rep='max', dataset='litbank', sample_invalid=1.0,
+                 emb_size=20, entity_rep='max', dataset='litbank',
                  device="cuda", max_ents=None, **kwargs):
         super(BaseMemory, self).__init__()
         self.device = device
@@ -20,7 +20,6 @@ class BaseMemory(nn.Module):
             self.num_feats = 4
 
         self.max_ents = max_ents
-        self.sample_invalid = sample_invalid
 
         self.hsize = hsize
         self.mem_size = hsize

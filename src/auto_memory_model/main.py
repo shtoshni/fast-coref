@@ -75,8 +75,6 @@ def main():
                         help='Number of evaluation docs.')
     parser.add_argument('-max_training_segments', default=1, type=int,
                         help='Maximum number of BERT segments in a document.')
-    parser.add_argument('-sample_invalid', help='Sample prob. of invalid mentions during training',
-                        default=0.0, type=float)
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
@@ -108,7 +106,7 @@ def main():
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size', 'mlp_depth',  # Memory params
                 'dropout_rate', 'seed', 'init_lr',
-                "new_ent_wt", 'sample_invalid',  'max_training_segments', 'label_smoothing_wt',  # weights & sampling
+                "new_ent_wt", 'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
 
