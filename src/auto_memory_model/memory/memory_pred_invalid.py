@@ -9,12 +9,6 @@ class MemoryPredInvalid(BaseMemory):
         self.mem_type = mem_type
         self.is_mem_bounded = self.max_ents is not None
 
-        # Remove last action feature - During test time we remove mentions with negative mention score (avoid for loop)
-        # Thus, if we use last action, there's a mismatch between features.
-        self.num_feats = self.num_feats - 1
-        self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, self.mlp_size, 1,
-                                 num_hidden_layers=self.mlp_depth, bias=True, drop_module=self.drop_module)
-
         if self.is_mem_bounded:
             self.fert_mlp = MLP(input_size=self.mem_size + self.num_feats * self.emb_size,
                                 hidden_size=self.mlp_size, output_size=1, num_hidden_layers=self.mlp_depth,
@@ -71,8 +65,7 @@ class MemoryPredInvalid(BaseMemory):
         follow_gt = self.training or teacher_forcing
 
         # print(len(gt_actions), len(mention_emb_list))
-        for ment_idx, (ment_emb, (gt_cell_idx, gt_action_str)) in \
-                enumerate(zip(mention_emb_list, gt_actions)):
+        for ment_idx, (ment_emb, (gt_cell_idx, gt_action_str)) in enumerate(zip(mention_emb_list, gt_actions)):
             ment_start, ment_end = ment_boundaries[ment_idx]
             query_vector = ment_emb
             num_ents = mem_vectors.shape[0]

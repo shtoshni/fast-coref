@@ -286,9 +286,25 @@ class Experiment:
                 oracle_evaluator = CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
 
+                logger.info(f"Evaluating on {len(data_iter)} examples")
                 for example in data_iter:
                     start_time = time.time()
-                    loss, action_list, pred_mentions, mention_scores, gt_actions = model(example)
+                    action_list, pred_mentions, mention_scores, gt_actions = model(example)
+
+                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+
+                    predicted_clusters, mention_to_predicted =\
+                        get_mention_to_cluster(predicted_clusters, threshold=cluster_threshold)
+                    gold_clusters, mention_to_gold =\
+                        get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
+                    evaluator.update(predicted_clusters, gold_clusters,
+                                     mention_to_predicted, mention_to_gold)
+
+                    elapsed_time = time.time() - start_time
+                    inference_time += elapsed_time
+
+                    coref_predictions[example["doc_key"]] = predicted_clusters
+                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
                     for pred_action, gt_action in zip(action_list, gt_actions):
                         pred_class_counter[pred_action[1]] += 1
@@ -298,24 +314,6 @@ class Experiment:
                             corr_actions += 1
 
                     total_actions += len(action_list)
-
-                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
-                    elapsed_time = time.time() - start_time
-                    inference_time += elapsed_time
-
-                    log_example = dict(example)
-                    log_example["pred_mentions"] = pred_mentions
-                    log_example["mention_scores"] = mention_scores
-                    log_example["raw_predicted_clusters"] = predicted_clusters
-
-                    predicted_clusters, mention_to_predicted =\
-                        get_mention_to_cluster(predicted_clusters, threshold=cluster_threshold)
-                    gold_clusters, mention_to_gold =\
-                        get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
-
-                    coref_predictions[example["doc_key"]] = predicted_clusters
-                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
-
                     # Update the number of clusters
                     num_gt_clusters += len(gold_clusters)
                     num_pred_clusters += len(predicted_clusters)
@@ -323,10 +321,13 @@ class Experiment:
                     oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
                     oracle_clusters, mention_to_oracle = \
                         get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
-                    evaluator.update(predicted_clusters, gold_clusters,
-                                     mention_to_predicted, mention_to_gold)
                     oracle_evaluator.update(oracle_clusters, gold_clusters,
                                             mention_to_oracle, mention_to_gold)
+
+                    log_example = dict(example)
+                    log_example["pred_mentions"] = pred_mentions
+                    log_example["mention_scores"] = mention_scores.tolist()
+                    log_example["raw_predicted_clusters"] = predicted_clusters
 
                     log_example["gt_actions"] = gt_actions
                     log_example["pred_actions"] = action_list
@@ -388,7 +389,7 @@ class Experiment:
                 logger.info(log_file)
                 logger.handlers[0].flush()
 
-        logging.info("Inference time: %.2f" % inference_time)
+        logger.info("Inference time: %.2f" % inference_time)
 
         return result_dict
 
@@ -407,7 +408,7 @@ class Experiment:
         for key, val in vars(self.args).items():
             output_dict[key] = val
 
-        for split in ['dev', 'test', 'train']:
+        for split in ['test', 'dev', 'train']:
             # if self.train_with_singletons:
             #     cluster_thresholds = [1, 2]
             # else:

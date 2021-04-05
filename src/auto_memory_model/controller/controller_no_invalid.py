@@ -18,35 +18,29 @@ class ControllerNoInvalid(BaseController):
         """
         Encode a batch of excerpts.
         """
-        encoded_doc = self.doc_encoder(example, max_training_segments=max_training_segments)
-        pred_starts, pred_ends, pred_scores = self.get_pred_mentions(example, encoded_doc, topk=True)
+        pred_mentions, mention_emb_list, mention_scores, mention_loss = \
+            self.get_mention_embs(example, topk=True)
 
-        # Sort the predicted mentions
-        pred_mentions = list(zip(pred_starts.tolist(), pred_ends.tolist()))
-        mention_score_list = torch.unbind(torch.unsqueeze(pred_scores, dim=1))
-
-        mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
-        mention_emb_list = torch.unbind(mention_embs, dim=0)
+        follow_gt = self.training or teacher_forcing
+        pred_mentions_list = pred_mentions.tolist()
 
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
-        follow_gt = self.training or teacher_forcing
-        rand_fl_list = np.random.random(len(mention_emb_list))
-        if teacher_forcing:
-            rand_fl_list = np.zeros_like(rand_fl_list)
-
         if "clusters" in example:
-            gt_actions = get_actions_unbounded(
-                pred_mentions, example["clusters"], rand_fl_list, follow_gt, self.sample_invalid)
+            gt_actions = get_actions_unbounded(pred_mentions_list, example["clusters"])
         else:
-            gt_actions = [(-1, 'i')] * len(pred_mentions)
+            gt_actions = [(-1, 'i')] * len(pred_mentions_list)
+
         action_prob_list, action_list = self.memory_net(
-            mention_emb_list, mention_score_list, gt_actions, metadata, teacher_forcing=teacher_forcing)
+            mention_emb_list, mention_scores, gt_actions, metadata, teacher_forcing=teacher_forcing)
 
         loss = {'total': None}
         if follow_gt:
+            if mention_loss is not None:
+                loss['entity'] = mention_loss
+                loss['total'] = loss['entity']
             if len(action_prob_list) > 0:
                 coref_new_prob_list = action_prob_list
                 loss = {}
@@ -56,5 +50,4 @@ class ControllerNoInvalid(BaseController):
 
             return loss, action_list, pred_mentions, gt_actions
         else:
-            mention_scores = [mention_score.item() for mention_score in mention_score_list]
-            return 0.0, action_list, pred_mentions, mention_scores, gt_actions
+            return action_list, pred_mentions_list, mention_scores, gt_actions

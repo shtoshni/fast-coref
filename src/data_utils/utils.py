@@ -41,7 +41,7 @@ def load_data(data_dir, max_segment_len, dataset='litbank', singleton_file=None,
         assert (len(dev_data) == 343)
         assert (len(test_data) == 348)
 
-    tokenizer = LongformerTokenizerFast.from_pretrained(f'allenai/longformer-large-4096', add_prefix_space=False)
+    tokenizer = LongformerTokenizerFast.from_pretrained(f'allenai/longformer-large-4096')
 
     if training:
         train_dataset = CorefDataset(train_data[:num_train_docs], tokenizer,

@@ -102,4 +102,4 @@ class ControllerPredInvalid(BaseController):
                     loss['total'] += loss['ignore']
             return loss, action_list, pred_mentions, gt_actions
         else:
-            return 0.0, action_list, pred_mentions_list, mention_scores.tolist(), gt_actions
+            return action_list, pred_mentions_list, mention_scores, gt_actions

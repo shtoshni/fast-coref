@@ -12,7 +12,7 @@ class BaseController(nn.Module):
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
                  max_ents=None,
-                 emb_size=20, sample_invalid=1.0,
+                 emb_size=20,
                  label_smoothing_wt=0.0,
                  dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
         super(BaseController, self).__init__()
@@ -25,7 +25,6 @@ class BaseController(nn.Module):
 
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
-        self.sample_invalid = sample_invalid
 
         self.label_smoothing_wt = label_smoothing_wt
 

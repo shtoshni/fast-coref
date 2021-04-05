@@ -161,7 +161,7 @@ def tokenize_and_segment_doc_list(doc_list, tokenizer):
 if __name__ == "__main__":
     from transformers import LongformerTokenizerFast
 
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=False)
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
     doc = "My father’s eyes had closed upon the light of this world six months, when Ishmael opened on it."
     print(get_tokenized_doc(doc, tokenizer))
 

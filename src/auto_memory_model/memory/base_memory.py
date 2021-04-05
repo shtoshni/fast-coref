@@ -7,20 +7,19 @@ LOG2 = math.log(2)
 
 
 class BaseMemory(nn.Module):
-    def __init__(self, hsize=300, mlp_size=200, mlp_depth=1, drop_module=None,
-                 emb_size=20, entity_rep='max', dataset='litbank', sample_invalid=1.0,
+    def __init__(self, hsize=300, mlp_size=200, cluster_mlp_size=200,  mlp_depth=1, drop_module=None,
+                 emb_size=20, entity_rep='max', dataset='litbank',
                  device="cuda", max_ents=None, **kwargs):
         super(BaseMemory, self).__init__()
         self.device = device
 
         self.dataset = dataset
         if self.dataset == 'litbank':
-            self.num_feats = 3
+            self.num_feats = 2
         elif self.dataset == 'ontonotes':
-            self.num_feats = 4
+            self.num_feats = 3
 
         self.max_ents = max_ents
-        self.sample_invalid = sample_invalid
 
         self.hsize = hsize
         self.mem_size = hsize
@@ -38,7 +37,7 @@ class BaseMemory(nn.Module):
         self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
         self.action_idx_to_str = ['c', 'o', 'i', 'n', '<s>']
 
-        self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, self.mlp_size, 1,
+        self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
                                  num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
         if self.entity_rep == 'learned_avg':
@@ -136,6 +135,9 @@ class BaseMemory(nn.Module):
         rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
 
         # Coref Score
+        # print(mem_vectors.shape)
+        # print(rep_query_vector.shape)
+        # print(feature_embs.shape)
         pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
         pair_score = self.mem_coref_mlp(pair_vec)
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
