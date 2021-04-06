@@ -17,189 +17,152 @@ from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller.utils import pick_controller
+from data_utils.tensorize_dataset import TensorizeDataset
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
 
 
 class Experiment:
-    def __init__(self, args, data_dir=None, dataset='litbank',
-                 model_dir=None, best_model_dir=None, singleton_file=None,
-                 pretrained_mention_model=None,
-                 # Model params
-                 seed=0, init_lr=3e-4, fine_tune_lr=None, max_gradient_norm=10.0,
-                 max_epochs=20, max_segment_len=512, eval_model=False,
-                 mem_type="unbounded", train_with_singletons=False,
-                 eval_max_ents=None, use_gold_ments=False,
-                 # Other params
-                 slurm_id=None, conll_data_dir=None, conll_scorer=None, **kwargs):
-        self.args = args
-
-        # Set the random seed first
-        self.seed = seed
-        torch.random.manual_seed(self.seed)
-        random.seed(self.seed)
-
-        self.model_args = vars(args)
-        self.pretrained_mention_model = pretrained_mention_model
+    def __init__(self, args, **kwargs):
+        self.__dict__.update(kwargs)
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.dataset = dataset
-
-        self.finetune = (fine_tune_lr is not None)
-        self.train_with_singletons = train_with_singletons
-
-        if train_with_singletons:
-            self.cluster_threshold = 1
-        else:
-            self.cluster_threshold = 2
-            # Remove singletons from training set
-
-        self.canonical_cluster_threshold = 1
-        if self.dataset == 'litbank':
+        self.cluster_threshold = 1 if args.train_with_singletons else 2
+        if args.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
-            self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
             self.canonical_cluster_threshold = 1
         else:
             # OntoNotes
             self.update_frequency = 100
-            self.max_stuck_epochs = 10
             self.canonical_cluster_threshold = 2
 
-        self.max_epochs = max_epochs
-        self.slurm_id = slurm_id  # Useful to keep this around for grid searches
+        self.orig_data_map = self.load_data()
+        self.data_processor = TensorizeDataset()
+        self.data_iter_map = {}
 
-        # CoNLL scorer and data in CoNLL format. Not a requirement as the python script gets pretty much
-        # the same numbers.
-        self.conll_scorer = conll_scorer
-        self.conll_data_dir = conll_data_dir
+        self.model = None
+        self.finetune = (args.fine_tune_lr is not None)
+        self.model_args = kwargs
 
-        # Get model paths
-        self.model_dir = model_dir
-        self.data_dir = data_dir
-        self.model_path = path.join(model_dir, 'model.pth')
-        self.best_model_path = path.join(best_model_dir, 'model.pth')
+        self.model_path = path.join(args.model_dir, 'model.pth')
+        self.best_model_path = path.join(args.best_model_dir, 'model.pth')
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.optimizer, self.optim_scheduler = {}, {}
 
-        self.train_info, self.optimizer, self.optim_scheduler = {}, {}, {}
-
-        if eval_model:
-            checkpoint = torch.load(self.best_model_path, map_location=self.device)
-            self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
-            self.model.load_state_dict(checkpoint['model'], strict=False)
-            print(checkpoint['model_args'])
-            # Finally evaluate model
-            if eval_max_ents is not None:
-                self.model.set_max_ents(eval_max_ents)
-            if use_gold_ments is not None:
-                self.model.use_gold_ments = use_gold_ments
-
-            if args.dataset != self.model.dataset:
-                # Change the default mention detection constants
-                if args.max_span_width is not None:
-                    self.model.max_span_width = args.max_span_width
-                if args.top_span_ratio is not None:
-                    self.model.top_span_ratio = args.top_span_ratio
-
-            self.data_iter_map = self.load_data(args, training=False)
-            self.final_eval()
-        else:
-            # Initialize model and training metadata
-            self.data_iter_map = self.load_data(args, training=True)
-            self.model = pick_controller(
-                mem_type=mem_type, dataset=dataset, device=self.device,
-                finetune=self.finetune, **kwargs).to(self.device)
-
+        if not args.eval_model:
             # Train info is a dictionary to keep around important training variables
             self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
-            self.initialize_setup(init_lr=init_lr, fine_tune_lr=fine_tune_lr)
-
-            if path.exists(self.model_path):
-                logging.info('Loading previous model: %s' % self.model_path)
-                self.load_model(self.model_path)
-
-            utils.print_model_info(self.model)
-            self.train(max_gradient_norm=max_gradient_norm)
+            self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
+            # Initialize model and training metadata
+            self.setup_training()
+            self.train()
 
             self.load_model(self.best_model_path, model_type='best')
             logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
+        else:
+            self.setup_eval()
 
-            self.data_iter_map = self.load_data(args, training=False)
-            self.final_eval()
+        self.perform_final_eval()
 
-    def load_data(self, args, training=True):
-        return load_data(args.data_dir, args.max_segment_len, dataset=self.dataset, singleton_file=args.singleton_file,
-                         num_train_docs=args.num_train_docs, num_eval_docs=args.num_eval_docs,
-                         max_training_segments=args.max_training_segments, num_workers=2, training=training)
+    def load_data(self):
+        return load_data(self.data_dir, self.max_segment_len, dataset=self.dataset, singleton_file=self.singleton_file,
+                         num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
 
-    def initialize_setup(self, init_lr, fine_tune_lr):
+    def setup_training(self):
+        self.model = pick_controller(
+            device=self.device, finetune=self.finetune, **self.model_args).to(self.device)
+
+        self.initialize_optimizers()
+
+        if path.exists(self.model_path):
+            logging.info('Loading previous model: %s' % self.model_path)
+            self.load_model(self.model_path)
+
+        utils.print_model_info(self.model)
+
+        # Only tensorize dev data here; Train needs constant shuffling and test is only needed for final eval
+        self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
+
+    def setup_eval(self):
+        checkpoint = torch.load(self.best_model_path, map_location=self.device)
+        self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
+        self.model.load_state_dict(checkpoint['model'], strict=False)
+        print(checkpoint['model_args'])
+        # Finally evaluate model
+        if self.eval_max_ents is not None:
+            self.model.set_max_ents(self.eval_max_ents)
+        if self.use_gold_ments is not None:
+            self.model.use_gold_ments = self.use_gold_ments
+
+        if self.dataset != self.model.dataset:
+            # Change the default mention detection constants
+            if self.max_span_width is not None:
+                self.model.max_span_width = self.max_span_width
+            if self.top_span_ratio is not None:
+                self.model.top_span_ratio = self.top_span_ratio
+
+    def initialize_optimizers(self):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
         torch.random.manual_seed(self.seed)
         np.random.seed(self.seed)
         random.seed(self.seed)
 
-        num_training_steps = len(self.data_iter_map['train']) * self.max_epochs
+        num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
         num_warmup_steps = int(0.1 * num_training_steps)
 
-        self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=init_lr, eps=1e-6)
+        self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
             self.optimizer['mem'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
-        if fine_tune_lr is not None:
+        if self.fine_tune_lr is not None:
             no_decay = ['bias', 'LayerNorm.weight']
             encoder_params = self.model.get_params(named=True)[0]
             grouped_param = [
                 {'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
-                 'lr': fine_tune_lr,
+                 'lr': self.fine_tune_lr,
                  'weight_decay': 1e-2},
                 {'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
-                 'lr': fine_tune_lr,
+                 'lr': self.fine_tune_lr,
                  'weight_decay': 0.0}
             ]
 
-            self.optimizer['doc'] = AdamW(grouped_param, lr=fine_tune_lr)
+            self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr)
 
             self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
                 self.optimizer['doc'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
-    def train(self, max_gradient_norm):
+    def train(self):
         """Train model"""
-        model = self.model
-        epochs_done = self.train_info['epoch']
-        optimizer = self.optimizer
-        scheduler = self.optim_scheduler
-
         if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
             return
 
-        for epoch in range(epochs_done, self.max_epochs):
+        model, optimizer, scheduler = self.model, self.optimizer, self.optim_scheduler
+
+        for epoch in range(self.train_info['epoch'], self.max_epochs):
             logger.info("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
             # Setup training
             model.train()
 
-            for cur_example in self.data_iter_map['train']:
+            train_data = self.data_processor.tensorize_data(
+                self.orig_data_map['train'], max_training_segments=self.max_training_segments)
+            np.random.shuffle(train_data)
+
+            for cur_example in train_data:
                 def handle_example(example):
-                    # Backprop
                     for key in optimizer:
                         optimizer[key].zero_grad()
 
-                    # Send the copy of the example, as the document could be truncated during training
-                    from copy import deepcopy
                     loss = model(example)[0]
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
 
-                    if torch.isnan(total_loss):
-                        print("Loss is NaN")
-                        sys.exit()
-
                     total_loss.backward()
-                    # Perform gradient clipping and update parameters
                     torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), max_gradient_norm)
+                        model.parameters(), self.max_gradient_norm)
 
                     for key in optimizer:
                         optimizer[key].step()
@@ -215,13 +178,7 @@ class Experiment:
                         cur_example["doc_key"], example_loss,
                         (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
                     )
-
-                    if torch.cuda.is_available():
-                        try:
-                            torch.cuda.reset_peak_memory_stats()
-                        except AttributeError:
-                            # In case of an earlier torch version
-                            torch.cuda.reset_max_memory_allocated()
+                    torch.cuda.reset_peak_memory_stats()
 
             sys.stdout.flush()
             # Update epochs done
@@ -229,8 +186,7 @@ class Experiment:
 
             # Dev performance
             cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
-            # print("Cluster threshold:", cluster_threshold)
-            fscore = self.eval_model(cluster_threshold=cluster_threshold)['fscore']
+            fscore = self.evaluate_model(cluster_threshold=cluster_threshold)['fscore']
 
             # Assume that the model didn't improve
             self.train_info['num_stuck_epochs'] += 1
@@ -261,13 +217,11 @@ class Experiment:
             if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
                 return
 
-    def eval_model(self, split='dev', final_eval=False, cluster_threshold=1):
+    def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
         model.eval()
-
-        data_iter = self.data_iter_map[split]
 
         pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         num_gt_clusters, num_pred_clusters = 0, 0
@@ -286,8 +240,8 @@ class Experiment:
                 oracle_evaluator = CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
 
-                logger.info(f"Evaluating on {len(data_iter)} examples")
-                for example in data_iter:
+                logger.info(f"Evaluating on {len(self.data_iter_map[split])} examples")
+                for example in self.data_iter_map[split]:
                     start_time = time.time()
                     action_list, pred_mentions, mention_scores, gt_actions = model(example)
 
@@ -393,9 +347,8 @@ class Experiment:
 
         return result_dict
 
-    def final_eval(self):
+    def perform_final_eval(self):
         """Evaluate the model on train, dev, and test"""
-        # Test performance  - Load best model
         perf_file = path.join(self.model_dir, "perf.json")
         if self.slurm_id:
             parent_dir = path.dirname(path.normpath(self.model_dir))
@@ -409,17 +362,14 @@ class Experiment:
             output_dict[key] = val
 
         for split in ['test', 'dev', 'train']:
-            # if self.train_with_singletons:
-            #     cluster_thresholds = [1, 2]
-            # else:
-            #     cluster_thresholds = [2]
+            if split not in self.data_iter_map:
+                self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
+
             cluster_thresholds = [self.canonical_cluster_threshold]
-            # if self.cluster_threshold != self.canonical_cluster_threshold:
-            # cluster_thresholds = [1, 2]
             for cluster_threshold in cluster_thresholds:
                 logging.info('\n')
                 logging.info('%s' % split.capitalize())
-                result_dict = self.eval_model(split, final_eval=True, cluster_threshold=cluster_threshold)
+                result_dict = self.evaluate_model(split, final_eval=True, cluster_threshold=cluster_threshold)
                 if split != 'test':
                     logging.info('Calculated F1: %.3f' % result_dict['fscore'])
 

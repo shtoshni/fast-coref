@@ -15,7 +15,7 @@ class BaseDocEncoder(nn.Module):
         self.max_training_segments = max_training_segments
 
         gradient_checkpointing = False
-        if finetune:
+        if finetune and self.training:
             gradient_checkpointing = True
             if torch.cuda.is_available():
                 memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)

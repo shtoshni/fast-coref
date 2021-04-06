@@ -83,6 +83,8 @@ def main():
                         help='Maximum number of epochs', default=25, type=int)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
+    parser.add_argument('-max_gradient_norm',
+                        help='Maximum gradient norm', default=10.0, type=float)
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=3e-4, type=float)
     parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",

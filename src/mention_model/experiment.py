@@ -217,7 +217,7 @@ class Experiment:
             for split in ['Train', 'Dev', 'Test']:
                 logging.info('\n')
                 logging.info('%s' % split)
-                split_f1, _ = self.eval_model(split.lower())
+                split_f1 = self.eval_model(split.lower())
                 logging.info('Calculated F1: %.3f' % split_f1)
 
                 f.write("%s\t%.4f\n" % (split, split_f1))
