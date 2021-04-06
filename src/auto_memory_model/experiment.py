@@ -24,13 +24,13 @@ logger = logging.getLogger()
 
 
 class Experiment:
-    def __init__(self, args, **kwargs):
+    def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.cluster_threshold = 1 if args.train_with_singletons else 2
-        if args.dataset == 'litbank':
+        self.cluster_threshold = 1 if self.train_with_singletons else 2
+        if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.canonical_cluster_threshold = 1
         else:
@@ -43,15 +43,15 @@ class Experiment:
         self.data_iter_map = {}
 
         self.model = None
-        self.finetune = (args.fine_tune_lr is not None)
+        self.finetune = (self.fine_tune_lr is not None)
         self.model_args = kwargs
 
-        self.model_path = path.join(args.model_dir, 'model.pth')
-        self.best_model_path = path.join(args.best_model_dir, 'model.pth')
+        self.model_path = path.join(self.model_dir, 'model.pth')
+        self.best_model_path = path.join(self.best_model_dir, 'model.pth')
 
         self.optimizer, self.optim_scheduler = {}, {}
 
-        if not args.eval_model:
+        if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
             self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
             self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
@@ -81,6 +81,7 @@ class Experiment:
             self.load_model(self.model_path)
 
         utils.print_model_info(self.model)
+        sys.stdout.flush()
 
         # Only tensorize dev data here; Train needs constant shuffling and test is only needed for final eval
         self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
@@ -358,7 +359,7 @@ class Experiment:
             perf_file = path.join(perf_dir, self.slurm_id + ".json")
 
         output_dict = {'model_dir': self.model_dir}
-        for key, val in vars(self.args).items():
+        for key, val in self.model_args.items():
             output_dict[key] = val
 
         for split in ['test', 'dev', 'train']:

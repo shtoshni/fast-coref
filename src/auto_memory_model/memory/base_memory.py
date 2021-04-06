@@ -8,7 +8,7 @@ LOG2 = math.log(2)
 
 class BaseMemory(nn.Module):
     def __init__(self, hsize=300, mlp_size=200, cluster_mlp_size=200,  mlp_depth=1, drop_module=None,
-                 emb_size=20, entity_rep='max', dataset='litbank',
+                 emb_size=20, entity_rep='max', dataset='litbank', sim_func='hadamard',
                  device="cuda", max_ents=None, **kwargs):
         super(BaseMemory, self).__init__()
         self.device = device
@@ -21,6 +21,7 @@ class BaseMemory(nn.Module):
 
         self.max_ents = max_ents
 
+        self.sim_func = sim_func
         self.hsize = hsize
         self.mem_size = hsize
         self.mlp_size = mlp_size
@@ -37,8 +38,17 @@ class BaseMemory(nn.Module):
         self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
         self.action_idx_to_str = ['c', 'o', 'i', 'n', '<s>']
 
-        self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
-                                 num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+        if self.sim_func == 'endpoint':
+            self.mem_coref_mlp = MLP(2 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
+                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+        elif self.sim_func == 'cosine':
+            self.cosine_sim_fn = nn.CosineSimilarity(dim=1, eps=1e-6)
+            self.mem_coref_mlp = MLP(self.num_feats * self.emb_size, cluster_mlp_size, 1,
+                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+        else:
+            # Default 'hadamard' + endpoints; used in SNLI by Bowman
+            self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
+                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
 
         if self.entity_rep == 'learned_avg':
             self.alpha = MLP(2 * self.mem_size, 300, 1, num_hidden_layers=1, bias=True, drop_module=drop_module)
@@ -135,11 +145,19 @@ class BaseMemory(nn.Module):
         rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
 
         # Coref Score
-        # print(mem_vectors.shape)
-        # print(rep_query_vector.shape)
-        # print(feature_embs.shape)
-        pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
-        pair_score = self.mem_coref_mlp(pair_vec)
+        if self.sim_func == 'endpoint':
+            pair_vec = torch.cat([mem_vectors, rep_query_vector, feature_embs], dim=-1)
+            pair_score = self.mem_coref_mlp(pair_vec)
+        elif self.sim_func == 'cosine':
+            cosine_sim = self.cosine_sim_fn(mem_vectors, rep_query_vector)
+            # print(cosine_sim.shape)
+            other_factor = self.mem_coref_mlp(feature_embs)
+            # print(other_factor.shape)
+            pair_score = torch.unsqueeze(cosine_sim + torch.squeeze(other_factor, dim=-1), dim=-1)
+        else:
+            pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
+            pair_score = self.mem_coref_mlp(pair_vec)
+
         coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0], device=self.device)], dim=0)

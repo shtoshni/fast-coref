@@ -74,13 +74,15 @@ def main():
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
     parser.add_argument('-max_training_segments', default=1, type=int,
-                        help='Maximum number of BERT segments in a document.')
+                        help='Maximum number of windows in a document during training.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=25, type=int)
+    parser.add_argument('-sim_func', default='hadamard', choices=['hadamard', 'cosine', 'endpoint'],
+                        help='Similarity function', type=str)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-max_gradient_norm',
@@ -107,12 +109,12 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
-                'dropout_rate', 'seed', 'init_lr',
+                'dropout_rate', 'seed', 'init_lr', 'max_epochs',
                 'max_training_segments', 'label_smoothing_wt',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
 
-    if args.cluster_mlp_size != args.mlp_size:
+    if args.cluster_mlp_size != parser.get_default('cluster_mlp_size'):
         imp_opts.append('cluster_mlp_size')
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
@@ -120,6 +122,9 @@ def main():
 
     if args.fine_tune_lr is not None:
         imp_opts.append('fine_tune_lr')
+
+    if args.sim_func is not parser.get_default('sim_func'):
+        imp_opts.append('sim_func')
 
     # Adding conditional important options
     if args.mem_type in ['learned', 'lru']:
@@ -187,9 +192,9 @@ def main():
     print(args.conll_data_dir)
 
     # Get mention model name
-    args.pretrained_mention_model = path.join(
-        path.join(args.base_model_dir, get_mention_model_name(args)), "best_models/model.pth")
-    print(args.pretrained_mention_model)
+    # args.pretrained_mention_model = path.join(
+    #     path.join(args.base_model_dir, get_mention_model_name(args)), "best_models/model.pth")
+    # print(args.pretrained_mention_model)
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")
@@ -202,7 +207,7 @@ def main():
             logging.info('%s: %s' % (key, val))
             f.write('%s: %s\n' % (key, val))
 
-    Experiment(args, **vars(args))
+    Experiment(**vars(args))
 
 
 if __name__ == "__main__":
