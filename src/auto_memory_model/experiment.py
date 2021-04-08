@@ -39,7 +39,7 @@ class Experiment:
             self.canonical_cluster_threshold = 2
 
         self.orig_data_map = self.load_data()
-        self.data_processor = TensorizeDataset()
+        self.data_processor = TensorizeDataset(self.doc_enc)
         self.data_iter_map = {}
 
         self.model = None

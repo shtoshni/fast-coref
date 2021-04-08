@@ -28,7 +28,7 @@ def main():
                         help='Singleton mentions separately extracted for training.')
     parser.add_argument('-model_size', default='large', type=str,
                         help='Model size')
-    parser.add_argument('-doc_enc', default='overlap', type=str,
+    parser.add_argument('-doc_enc', default='independent', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
     parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of BERT segments.')

@@ -247,7 +247,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
     for cross_val_split in range(10):
         # for seg_len in [128, 256, 384, 512]:
-        for seg_len in [512]:
+        for seg_len in [1024, 1536, 2048, 4096]:
             labels = collections.defaultdict(set)
             stats = collections.defaultdict(int)
             minimize_split(labels, stats, cross_val_split,

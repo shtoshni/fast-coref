@@ -8,22 +8,22 @@ class OverlapDocEncoder(BaseDocEncoder):
     def __init__(self, **kwargs):
         super(OverlapDocEncoder, self).__init__(**kwargs)
 
-    def encode_doc(self, example):
+    def forward(self, instance):
         """
         Encode chunks of a document.
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-        start_indices = example["start_indices"]
-        end_indices = example["end_indices"]
+        start_indices = instance["start_indices"]
+        end_indices = instance["end_indices"]
 
-        doc_tens = example["padded_sent"]
+        doc_tens = instance["padded_sent"]
         if isinstance(doc_tens, list):
             doc_tens = torch.tensor(doc_tens, device=self.device)
         else:
             doc_tens = doc_tens.to(self.device)
 
-        sent_len_list = example["sent_len_list"]
+        sent_len_list = instance["sent_len_list"]
         if isinstance(sent_len_list, list):
             sent_len_list = torch.tensor(sent_len_list, device=self.device)
         else:
@@ -51,6 +51,3 @@ class OverlapDocEncoder(BaseDocEncoder):
         encoded_output = torch.cat(unpadded_encoded_output, dim=0)
         encoded_output = encoded_output
         return encoded_output
-
-    def forward(self, example):
-        return self.encode_doc(example)
