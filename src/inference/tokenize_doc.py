@@ -1,10 +1,6 @@
 """This is an adaptation of the tokenizer used for LitBank in the overlapping segments setting."""
-
-
-import re
+import torch
 from data_processing.overlap_ontonotes import normalize_word
-
-MAX_SEGMENT_LEN = 2048
 
 
 class DocumentState(object):
@@ -34,10 +30,10 @@ class DocumentState(object):
             "sentences": self.segments,
             "real_sentences": self.real_segments,
             "sent_len_list": self.sent_len_list,
-            "padded_sent": self.padded_sent,
+            "padded_sent": torch.tensor(self.padded_sent),
             "start_indices": self.start_indices,
             "end_indices": self.end_indices,
-            'sentence_map': [0] * num_words,  # Assume no sentence boundaries are specified
+            'sentence_map': torch.tensor([0] * num_words),  # Assume no sentence boundaries are specified
             "subtoken_map": subtoken_map,
             "part_lens": self.part_lens,
         }
@@ -47,7 +43,7 @@ def flatten(l):
   return [item for sublist in l for item in sublist]
 
 
-def split_into_segments(document_state, constraints1, constraints2):
+def split_into_segments(document_state, constraints1, constraints2, max_segment_len=2048):
     current = 0
     prev_current = -1
     start_idx = 0
@@ -56,12 +52,12 @@ def split_into_segments(document_state, constraints1, constraints2):
         if prev_current == current:
             break
         # print(current, len(document_state.subtokens))
-        end = min(current + MAX_SEGMENT_LEN - 1 - 2,
+        end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
         while end >= current and not constraints1[end]:
             end -= 1
         if end < current:
-            end = min(current + MAX_SEGMENT_LEN - 1 - 2,
+            end = min(current + max_segment_len - 1 - 2,
                       len(document_state.subtokens) - 1)
             while end >= current and not constraints2[end]:
                 end -= 1
@@ -132,30 +128,35 @@ def get_tokenized_doc(doc_str, tokenizer, document_state=None):
     return document_state
 
 
-def tokenize_and_segment_doc(doc_str, tokenizer):
-    document_state = get_tokenized_doc(doc_str, tokenizer)
-    split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
+def tokenize_and_segment_doc(doc_str, lm_tokenizer, max_segment_len=2048):
+    document_state = get_tokenized_doc(doc_str, lm_tokenizer)
+    document = post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=max_segment_len)
+    return document
 
-    sentences = [([tokenizer.cls_token] + sent + [tokenizer.sep_token])
+
+def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=2048):
+    document_state = DocumentState()
+    for doc_str in doc_list:
+        get_tokenized_doc(doc_str, lm_tokenizer, document_state=document_state)
+        document_state.part_lens.append(len(document_state.tokens))
+
+    document = post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=max_segment_len)
+    return document
+
+
+def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=2048):
+    split_into_segments(document_state, document_state.sentence_end, document_state.token_end,
+                        max_segment_len=max_segment_len)
+
+    sentences = [([lm_tokenizer.cls_token] + sent + [lm_tokenizer.sep_token])
                  for sent in document_state.real_segments]
     sent_len_list = [len(sent) for sent in sentences]
     document_state.sent_len_list = sent_len_list
     max_sent_len = max(sent_len_list)
-    padded_sent = [tokenizer.convert_tokens_to_ids(sent)
-                   + [tokenizer.pad_token_id] * (max_sent_len - len(sent)) for sent in sentences]
+    padded_sent = [lm_tokenizer.convert_tokens_to_ids(sent)
+                   + [lm_tokenizer.pad_token_id] * (max_sent_len - len(sent)) for sent in sentences]
     document_state.padded_sent = padded_sent
-    document = document_state.finalize()
-    return document
-
-
-def tokenize_and_segment_doc_list(doc_list, tokenizer):
-    document_state = DocumentState()
-    for doc_str in doc_list:
-        get_tokenized_doc(doc_str, tokenizer, document_state=document_state)
-        document_state.part_lens.append(len(document_state.tokens))
-    split_into_segments(document_state, document_state.sentence_end, document_state.token_end)
-    document = document_state.finalize()
-    return document
+    return document_state.finalize()
 
 
 if __name__ == "__main__":

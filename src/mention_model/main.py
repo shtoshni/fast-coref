@@ -23,6 +23,7 @@ def main():
         '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
     parser.add_argument('-base_model_dir',
                         default='../models', help='Root folder storing model runs', type=str)
+    parser.add_argument('-model_dir', default=None, help='Model directory', type=str)
     parser.add_argument('-singleton_file', default=None,
                         help='Singleton mentions separately extracted for training.')
     parser.add_argument('-model_size', default='large', type=str,
@@ -74,17 +75,20 @@ def main():
 
     args = parser.parse_args()
 
-    model_name = get_mention_model_name(args)
-    print(model_name)
+    if args.model_dir is None:
+        model_name = get_mention_model_name(args)
+        print(model_name)
 
-    model_dir = path.join(args.base_model_dir, model_name)
-    args.model_dir = model_dir
-    best_model_dir = path.join(model_dir, 'best_models')
-    args.best_model_dir = best_model_dir
-    if not path.exists(model_dir):
-        os.makedirs(model_dir)
-    if not path.exists(best_model_dir):
-        os.makedirs(best_model_dir)
+        model_dir = path.join(args.base_model_dir, model_name)
+        args.model_dir = model_dir
+        best_model_dir = path.join(model_dir, 'best_models')
+        args.best_model_dir = best_model_dir
+        if not path.exists(model_dir):
+            os.makedirs(model_dir)
+        if not path.exists(best_model_dir):
+            os.makedirs(best_model_dir)
+    else:
+        args.best_model_dir = args.model_dir
 
     if args.data_dir is None:
         if args.dataset == 'litbank':

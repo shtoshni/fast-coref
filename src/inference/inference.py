@@ -14,7 +14,8 @@ class Inference:
             self.device = device
         checkpoint = torch.load(model_path, map_location=self.device)
         self.model = pick_controller(device=self.device, **checkpoint['model_args'])
-        # print(checkpoint['model_args'])
+        self.max_segment_len = checkpoint['model_args']['max_segment_len']
+
         self.model.load_state_dict(checkpoint['model'])
         self.model = self.model.to(self.device)
         self.model.eval()  # Eval mode
@@ -24,9 +25,9 @@ class Inference:
 
     def perform_coreference(self, doc, doc_key="nw", num_sents=None):
         if isinstance(doc, str):
-            tokenized_doc = tokenize_and_segment_doc(doc, self.tokenizer)
+            tokenized_doc = tokenize_and_segment_doc(doc, self.tokenizer, max_segment_len=self.max_segment_len)
         elif isinstance(doc, list):
-            tokenized_doc = tokenize_and_segment_doc_list(doc, self.tokenizer)
+            tokenized_doc = tokenize_and_segment_doc_list(doc, self.tokenizer, max_segment_len=self.max_segment_len)
         elif isinstance(doc, dict):
             tokenized_doc = doc
         else:
@@ -47,7 +48,7 @@ class Inference:
         subtoken_map = tokenized_doc["subtoken_map"]
 
         with torch.no_grad():
-            _, pred_actions, pred_mentions, _, _ = self.model(tokenized_doc)
+            pred_actions, pred_mentions, _, _ = self.model(tokenized_doc)
 
         idx_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 

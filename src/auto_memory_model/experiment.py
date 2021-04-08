@@ -151,6 +151,8 @@ class Experiment:
                 self.orig_data_map['train'], max_training_segments=self.max_training_segments)
             np.random.shuffle(train_data)
 
+            encoder_params, task_params = model.get_params()
+
             for cur_example in train_data:
                 def handle_example(example):
                     for key in optimizer:
@@ -162,8 +164,8 @@ class Experiment:
                         return None
 
                     total_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(
-                        model.parameters(), self.max_gradient_norm)
+                    torch.nn.utils.clip_grad_norm_(encoder_params, self.max_gradient_norm)
+                    torch.nn.utils.clip_grad_norm_(task_params, self.max_gradient_norm)
 
                     for key in optimizer:
                         optimizer[key].step()
@@ -288,8 +290,9 @@ class Experiment:
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 
-                    del log_example["padded_sent"]
-                    del log_example["sent_len_list"]
+                    for key in list(log_example.keys()):
+                        if isinstance(log_example[key], torch.Tensor):
+                            del log_example[key]
 
                     f.write(json.dumps(log_example) + "\n")
 

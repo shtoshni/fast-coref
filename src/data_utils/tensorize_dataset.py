@@ -72,7 +72,7 @@ class TensorizeDataset:
         output_dict["doc_key"] = instance["doc_key"]
         output_dict["clusters"] = instance["clusters"]
         output_dict["subtoken_map"] = instance["subtoken_map"]
-        output_dict["sentence_map"] = instance["sentence_map"]
+        output_dict["sentence_map"] = torch.tensor(instance["sentence_map"], device=self.device)
         output_dict["start_indices"] = instance["start_indices"]
         output_dict["end_indices"] = instance["end_indices"]
 

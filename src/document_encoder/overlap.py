@@ -14,17 +14,26 @@ class OverlapDocEncoder(BaseDocEncoder):
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-
-        doc_tens = example["padded_sent"].to(self.device)
-        sent_len_list = example["sent_len_list"]
         start_indices = example["start_indices"]
         end_indices = example["end_indices"]
-        num_chunks = sent_len_list.shape[0]
 
+        doc_tens = example["padded_sent"]
+        if isinstance(doc_tens, list):
+            doc_tens = torch.tensor(doc_tens, device=self.device)
+        else:
+            doc_tens = doc_tens.to(self.device)
+
+        sent_len_list = example["sent_len_list"]
+        if isinstance(sent_len_list, list):
+            sent_len_list = torch.tensor(sent_len_list, device=self.device)
+        else:
+            sent_len_list = sent_len_list.to(self.device)
+
+        num_chunks = sent_len_list.shape[0]
         if num_chunks == 1:
             attn_mask = None
         else:
-            attn_mask = get_sequence_mask(sent_len_list.to(self.device))
+            attn_mask = get_sequence_mask(sent_len_list)
 
         if not self.finetune:
             with torch.no_grad():
@@ -33,7 +42,6 @@ class OverlapDocEncoder(BaseDocEncoder):
             outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
 
         encoded_repr = outputs[0]
-
         unpadded_encoded_output = []
         offset = 1  # for cls_token which was not accounted during segmentation
         for i in range(num_chunks):

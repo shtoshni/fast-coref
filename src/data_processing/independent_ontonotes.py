@@ -11,7 +11,7 @@ import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizerFast
+from transformers import BertTokenizerFast, LongformerTokenizerFast
 
 
 class DocumentState(object):
@@ -222,7 +222,7 @@ def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
 
 def minimize_split(seg_len, input_dir, output_dir, stats):
     # do_lower_case = True if 'chinese' in vocab_file else False
-    tokenizer = BertTokenizerFast.from_pretrained('bert-base-cased')
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
 
     minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
     minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)

@@ -11,7 +11,7 @@ import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizer
+from transformers import BertTokenizer, LongformerTokenizerFast
 
 
 class DocumentState(object):
@@ -226,7 +226,7 @@ def minimize_partition(split, cross_val_split, labels, stats, tokenizer,
 
 
 def minimize_split(labels, stats, cross_val_split, seg_len, input_dir, output_dir):
-    tokenizer = BertTokenizer.from_pretrained('bert-base-cased')
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
     # Create cross validation output dir
     cross_val_dir = path.join(output_dir, str(cross_val_split))
     if not path.exists(cross_val_dir):

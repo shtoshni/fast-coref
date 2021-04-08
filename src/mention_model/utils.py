@@ -21,7 +21,7 @@ def get_mention_model_name(args):
     elif (not args.train_with_singletons) and args.dataset == 'litbank':
         model_name_suffix += '_no_singleton'
 
-    model_name = "ment_" + model_name_suffix
+    model_name = "ment_longformer_" + model_name_suffix
     return model_name
 
 

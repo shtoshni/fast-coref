@@ -114,7 +114,7 @@ class BaseController(nn.Module):
         return width_scores
 
     def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
-        gold_ments = torch.zeros(num_words, self.max_span_width).cuda()
+        gold_ments = torch.zeros(num_words, self.max_span_width, device=self.device)
         for cluster in clusters:
             for (span_start, span_end) in cluster:
                 span_width = span_end - span_start + 1
@@ -129,14 +129,14 @@ class BaseController(nn.Module):
     def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
 
-        sent_map = torch.tensor(example["sentence_map"]).cuda()
+        sent_map = example["sentence_map"].to(self.device)
         # num_words x max_span_width
-        cand_starts = torch.unsqueeze(torch.arange(num_words), dim=1).repeat(1, self.max_span_width).cuda()
-        cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width), dim=0).cuda()
+        cand_starts = torch.unsqueeze(torch.arange(num_words, device=self.device), dim=1).repeat(1, self.max_span_width)
+        cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width, device=self.device), dim=0)
 
         cand_start_sent_indices = sent_map[cand_starts]
         # Avoid getting sentence indices for cand_ends >= num_words
-        corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends).cuda() * (num_words - 1))
+        corr_cand_ends = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
         cand_end_sent_indices = sent_map[corr_cand_ends]
 
         # End before document ends & Same sentence
@@ -210,11 +210,6 @@ class BaseController(nn.Module):
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
         return pred_mentions, mention_emb_list, pred_scores, mention_loss
-
-    def entity_or_not_entity_gt(self, action_tuple_list):
-        action_indices = [1 if action_str == 'i' else 0 for (_, action_str) in action_tuple_list]
-        action_indices = torch.tensor(action_indices, device=self.device)
-        return action_indices
 
     def calculate_coref_loss(self, action_prob_list, action_tuple_list):
         num_ents = 0

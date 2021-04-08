@@ -1,3 +1,5 @@
+import random
+
 import sys
 from os import path
 
@@ -11,6 +13,7 @@ import numpy as np
 import pytorch_utils.utils as utils
 from mention_model.controller import Controller
 from data_utils.utils import load_data
+from data_utils.tensorize_dataset import TensorizeDataset
 from transformers import get_linear_schedule_with_warmup, AdamW
 
 EPS = 1e-8
@@ -20,14 +23,14 @@ logger = logging.getLogger()
 
 class Experiment:
     def __init__(self, args, data_dir=None, dataset='litbank',
-                 model_dir=None, best_model_dir=None, pretrained_mention_model=None,
+                 model_dir=None, best_model_dir=None,
                  # Model params
-                 seed=0, init_lr=1e-3, fine_tune_lr=1e-5, max_gradient_norm=5.0,
+                 seed=0, fine_tune_lr=1e-5, max_gradient_norm=1.0,
                  max_epochs=20, eval_model=False,
                  # Other params
                  slurm_id=None, **kwargs):
-
-        self.pretrained_mention_model = pretrained_mention_model
+        self.__dict__.update(**vars(args))
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.slurm_id = slurm_id
         self.max_epochs = max_epochs
         # Set the random seed first
@@ -36,7 +39,9 @@ class Experiment:
         # Prepare data info
         self.dataset = dataset
 
-        self.data_iter_map = self.load_data(args, training=True)
+        self.orig_data_map = self.load_data(args)
+        self.data_processor = TensorizeDataset()
+        self.data_iter_map = {}
 
         # Get model paths
         self.model_dir = model_dir
@@ -48,60 +53,68 @@ class Experiment:
         self.train_info, self.optimizer, self.optim_scheduler = {}, {}, {}
         self.finetune = (fine_tune_lr is not None)
 
-        self.model = Controller(**kwargs).cuda()
+        self.model = Controller(device=self.device, finetune=self.finetune, **kwargs).cuda()
         utils.print_model_info(self.model)
 
         if eval_model:
             self.load_model(self.best_model_path, model_type='best')
-            self.data_iter_map = self.load_data(args, training=False)
-            self.final_eval()
         else:
             self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
-            self.initialize_setup(init_lr, fine_tune_lr)
-            self.data_iter_map = self.load_data(args, training=True)
+            self.setup_training()
             self.train(max_epochs=max_epochs, max_gradient_norm=max_gradient_norm)
-            self.data_iter_map = self.load_data(args, training=False)
-            self.final_eval()
+
+            self.load_model(self.best_model_path, model_type='best')
+            logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
+
+        self.final_eval()
 
     @staticmethod
-    def load_data(args, training=True):
+    def load_data(args):
         return load_data(args.data_dir, args.max_segment_len, dataset=args.dataset, singleton_file=args.singleton_file,
-                         num_train_docs=args.num_train_docs, num_eval_docs=args.num_eval_docs,
-                         max_training_segments=args.max_training_segments, num_workers=2, training=training)
+                         num_train_docs=args.num_train_docs, num_eval_docs=args.num_eval_docs)
 
-    def initialize_setup(self, init_lr, fine_tune_lr):
-        """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
-        other_params = []
-        encoder_params = []
-        encoder_param_names = set([name for name, _ in self.model.named_parameters() if "lm_encoder." in name])
+    def setup_training(self):
+        self.initialize_optimizers()
 
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                if name in encoder_param_names:
-                    encoder_params.append(param)
-                    continue
-                else:
-                    other_params.append(param)
-
-        num_training_steps = len(self.data_iter_map['train']) * self.max_epochs
-
-        self.optimizer['mem'] = torch.optim.AdamW(
-            other_params, lr=init_lr, eps=1e-6, weight_decay=0)
-        # self.optimizer_params['mem'] = other_params  # Useful in gradient clipping
-        self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=num_training_steps)
-        if fine_tune_lr is not None:
-            self.optimizer['doc'] = AdamW(encoder_params, lr=fine_tune_lr, eps=1e-6, weight_decay=1e-2)
-            self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
-                self.optimizer['doc'], num_warmup_steps=0, num_training_steps=num_training_steps)
-
-        if not path.exists(self.model_path):
-            torch.manual_seed(self.seed)
-            np.random.seed(self.seed)
-        else:
+        if path.exists(self.model_path):
             logging.info('Loading previous model: %s' % self.model_path)
-            # Load model
             self.load_model(self.model_path)
+
+        utils.print_model_info(self.model)
+        sys.stdout.flush()
+
+        # Only tensorize dev data here; Train needs constant shuffling and test is only needed for final eval
+        self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
+
+    def initialize_optimizers(self):
+        """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
+        torch.random.manual_seed(self.seed)
+        np.random.seed(self.seed)
+        random.seed(self.seed)
+
+        num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
+        num_warmup_steps = int(0.1 * num_training_steps)
+
+        self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
+        self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
+            self.optimizer['mem'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
+
+        if self.fine_tune_lr is not None:
+            no_decay = ['bias', 'LayerNorm.weight']
+            encoder_params = self.model.get_params(named=True)[0]
+            grouped_param = [
+                {'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
+                 'lr': self.fine_tune_lr,
+                 'weight_decay': 1e-2},
+                {'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
+                 'lr': self.fine_tune_lr,
+                 'weight_decay': 0.0}
+            ]
+
+            self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr)
+
+            self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
+                self.optimizer['doc'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
     def train(self, max_epochs, max_gradient_norm):
         """Train model"""
@@ -115,7 +128,11 @@ class Experiment:
             start_time = time.time()
             model.train()
 
-            for cur_example in self.data_iter_map['train']:
+            train_data = self.data_processor.tensorize_data(
+                self.orig_data_map['train'], max_training_segments=self.max_training_segments)
+            np.random.shuffle(train_data)
+
+            for cur_example in train_data:
                 def handle_example(train_example):
                     loss = model(train_example)[0]
                     total_loss = loss['mention']
@@ -141,7 +158,7 @@ class Experiment:
                 from copy import deepcopy
                 handle_example(deepcopy(cur_example))
 
-                if (self.train_info['global_steps'] + 1) % 50 == 0:
+                if (self.train_info['global_steps'] + 1) % 100 == 0:
                     logging.info("Steps %d, Max memory %.3f" % (
                         self.train_info['global_steps'] + 1, (torch.cuda.max_memory_allocated() / (1024 ** 3))))
                     torch.cuda.reset_peak_memory_stats()
@@ -149,13 +166,13 @@ class Experiment:
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
             # Validation performance
-            recall = self.eval_model()
+            recall = self.evaluate_model()
 
             # Update model if validation performance improves
             if recall > self.train_info['val_perf']:
                 self.train_info['val_perf'] = recall
                 logging.info('Saving best model')
-                self.save_model(self.best_model_path)
+                self.save_model(self.best_model_path, model_type='best')
 
             # Save model
             self.save_model(self.model_path)
@@ -166,7 +183,7 @@ class Experiment:
 
             sys.stdout.flush()
 
-    def eval_model(self, split='dev'):
+    def evaluate_model(self, split='dev'):
         """Eval model"""
         # Set the random seed to get consistent results
         model = self.model
@@ -192,8 +209,9 @@ class Experiment:
                     total_recall += recall
                     total_gold += filtered_gold
 
-                    del log_example["padded_sent"]
-                    del log_example["sent_len_list"]
+                    for key in list(log_example.keys()):
+                        if isinstance(log_example[key], torch.Tensor):
+                            del log_example[key]
 
                     f.write(json.dumps(log_example) + "\n")
 
@@ -208,16 +226,18 @@ class Experiment:
     def final_eval(self):
         """Evaluate the model on train, dev, and test"""
         # Test performance  - Load best model
-        self.load_model(self.best_model_path)
+        self.load_model(self.best_model_path, model_type='best')
         logging.info("Loading best model after epoch: %d" %
                      self.train_info['epoch'])
 
         perf_file = path.join(self.model_dir, "perf.txt")
         with open(perf_file, 'w') as f:
-            for split in ['Train', 'Dev', 'Test']:
+            for split in ['train', 'dev', 'test']:
+                if split not in self.data_iter_map:
+                    self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
                 logging.info('\n')
                 logging.info('%s' % split)
-                split_f1 = self.eval_model(split.lower())
+                split_f1 = self.evaluate_model(split.lower())
                 logging.info('Calculated F1: %.3f' % split_f1)
 
                 f.write("%s\t%.4f\n" % (split, split_f1))
