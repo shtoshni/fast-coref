@@ -58,7 +58,7 @@ class ControllerPredInvalid(BaseController):
             metadata = {'genre': self.get_genre_embedding(example)}
 
         follow_gt = self.training or teacher_forcing
-        cell_to_cluster, cluster_to_cell = {}, {}
+        cluster_to_cell = None
         coref_new_list, new_ignore_list, action_list, pred_mentions_list, gt_actions = [], [], [], [], []
         loss = {'total': None}
         mention_loss = None
@@ -88,6 +88,7 @@ class ControllerPredInvalid(BaseController):
 
             cur_pred_mentions, cur_mention_emb_list, _, cur_mention_loss = \
                 self.get_mention_embs(cur_example, topk=False)
+
             if mention_loss is None:
                 if cur_mention_loss is not None:
                     mention_loss = cur_mention_loss
@@ -96,13 +97,14 @@ class ControllerPredInvalid(BaseController):
 
             cur_pred_mentions = cur_pred_mentions + word_offset
             word_offset += num_words
-            pred_mentions_list.extend(cur_pred_mentions.tolist())
+            cur_pred_mentions_list = cur_pred_mentions.tolist()
+            pred_mentions_list.extend(cur_pred_mentions_list)
 
             if "clusters" in example:
                 cur_gt_actions, cluster_to_cell = self.get_actions(
-                    cur_pred_mentions, mention_to_cluster, cluster_to_cell=cluster_to_cell)
+                    cur_pred_mentions_list, mention_to_cluster, cluster_to_cell=cluster_to_cell)
             else:
-                cur_gt_actions = [(-1, 'i')] * len(cur_pred_mentions)
+                cur_gt_actions = [(-1, 'i')] * len(cur_pred_mentions_list)
 
             gt_actions.extend(cur_gt_actions)
 

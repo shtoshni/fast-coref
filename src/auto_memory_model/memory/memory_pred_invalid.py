@@ -57,15 +57,16 @@ class MemoryPredInvalid(BaseMemory):
         else:
             mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
 
-        lru_list = []
-        if self.mem_type == 'lru':
-            lru_list = list(range(self.max_ents))
-
         coref_new_list, new_ignore_list = [], []
         action_list = []  # argmax actions
         first_overwrite = (True if torch.sum(ent_counter) == 0 else False)
 
         follow_gt = self.training or teacher_forcing
+
+        # For LRU memory
+        lru_list = []
+        if self.mem_type == 'lru':
+            lru_list = list(range(self.max_ents))
 
         # print(len(gt_actions), len(mention_emb_list))
         for ment_idx, (ment_emb, (gt_cell_idx, gt_action_str)) in enumerate(zip(mention_emb_list, gt_actions)):
@@ -155,5 +156,5 @@ class MemoryPredInvalid(BaseMemory):
                 lru_list.remove(cell_idx)
                 lru_list.append(cell_idx)
 
-        mem_state = {"mem": mem_vectors, "ent_counter": ent_counter, "last_mention_idx": last_mention_start}
+        mem_state = {"mem": mem_vectors, "ent_counter": ent_counter, "last_mention_start": last_mention_start}
         return coref_new_list, new_ignore_list, action_list, mem_state

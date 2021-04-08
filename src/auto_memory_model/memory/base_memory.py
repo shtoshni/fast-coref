@@ -56,15 +56,15 @@ class BaseMemory(nn.Module):
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
-    def initialize_memory(self, mem=None, ent_counter=None, last_mention_idx=None):
+    def initialize_memory(self, mem=None, ent_counter=None, last_mention_start=None):
         if mem is None:
             mem = torch.zeros(1, self.mem_size).to(self.device)
         if ent_counter is None:
             ent_counter = torch.tensor([0.0]).to(self.device)
-        if last_mention_idx is None:
-            last_mention_idx = torch.zeros(1).long().to(self.device)
+        if last_mention_start is None:
+            last_mention_start = torch.zeros(1).long().to(self.device)
 
-        return mem, ent_counter, last_mention_idx
+        return mem, ent_counter, last_mention_start
 
     @staticmethod
     def get_distance_bucket(distances):

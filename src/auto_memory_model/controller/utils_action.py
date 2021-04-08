@@ -1,41 +1,12 @@
 from coref_utils.utils import get_mention_to_cluster_idx
 
 
-def get_actions_unbounded(pred_mentions, clusters):
-    # Useful data structures
-    mention_to_cluster = get_mention_to_cluster_idx(clusters)
-
-    actions = []
-    cluster_to_cell = {}
-
-    cell_counter = 0
-    for idx, mention in enumerate(pred_mentions):
-        if tuple(mention) not in mention_to_cluster:
-            # Not a mention - Add to memory anyways.
-            # This is not a problem because singletons are removed during metric calculation.
-            actions.append((cell_counter, 'o'))
-            cell_counter += 1
-        else:
-            mention_cluster = mention_to_cluster[tuple(mention)]
-            if mention_cluster in cluster_to_cell:
-                # Cluster is already being tracked
-                actions.append((cluster_to_cell[mention_cluster], 'c'))
-            else:
-                # Cluster is not being tracked
-                # Add the mention to being tracked
-                cluster_to_cell[mention_cluster] = cell_counter
-                actions.append((cell_counter, 'o'))
-                cell_counter += 1
-
-    return actions
-
-
 def get_actions_unbounded_fast(pred_mentions, mention_to_cluster, cluster_to_cell=None):
     actions = []
     if cluster_to_cell is None:
         cluster_to_cell = {}
 
-    cell_counter = 0
+    cell_counter = len(cluster_to_cell)
     for idx, mention in enumerate(pred_mentions):
         if tuple(mention) not in mention_to_cluster:
             actions.append((-1, 'i'))
