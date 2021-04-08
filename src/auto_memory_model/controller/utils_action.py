@@ -30,12 +30,10 @@ def get_actions_unbounded(pred_mentions, clusters):
     return actions
 
 
-def get_actions_unbounded_fast(pred_mentions, clusters):
-    # Useful data structures
-    mention_to_cluster = get_mention_to_cluster_idx(clusters)
-
+def get_actions_unbounded_fast(pred_mentions, mention_to_cluster, cluster_to_cell=None):
     actions = []
-    cluster_to_cell = {}
+    if cluster_to_cell is None:
+        cluster_to_cell = {}
 
     cell_counter = 0
     for idx, mention in enumerate(pred_mentions):
@@ -53,7 +51,7 @@ def get_actions_unbounded_fast(pred_mentions, clusters):
                 actions.append((cell_counter, 'o'))
                 cell_counter += 1
 
-    return actions
+    return actions, cluster_to_cell
 
 
 def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):

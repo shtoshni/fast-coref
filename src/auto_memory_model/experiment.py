@@ -158,7 +158,7 @@ class Experiment:
                     for key in optimizer:
                         optimizer[key].zero_grad()
 
-                    loss = model(example)[0]
+                    loss = model(example)
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
@@ -246,7 +246,7 @@ class Experiment:
                 logger.info(f"Evaluating on {len(self.data_iter_map[split])} examples")
                 for example in self.data_iter_map[split]:
                     start_time = time.time()
-                    action_list, pred_mentions, mention_scores, gt_actions = model(example)
+                    action_list, pred_mentions, gt_actions = model(example)
 
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
 
@@ -283,13 +283,13 @@ class Experiment:
 
                     log_example = dict(example)
                     log_example["pred_mentions"] = pred_mentions
-                    log_example["mention_scores"] = mention_scores.tolist()
                     log_example["raw_predicted_clusters"] = predicted_clusters
 
                     log_example["gt_actions"] = gt_actions
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 
+                    del log_example["padded_sent"]
                     for key in list(log_example.keys()):
                         if isinstance(log_example[key], torch.Tensor):
                             del log_example[key]

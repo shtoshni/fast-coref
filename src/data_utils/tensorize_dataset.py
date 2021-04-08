@@ -47,20 +47,20 @@ class TensorizeDataset:
                 if len(cluster):
                     clusters.append(cluster)
 
+            instance = deepcopy(instance)
             instance["sentences"] = sentences
             instance["clusters"] = clusters
             instance["sentence_map"] = sentence_map
 
         sentences = instance["sentences"]
-
         sentences = [([self.tokenizer.cls_token] + sent + [self.tokenizer.sep_token]) for sent in sentences]
         sent_len_list = [len(sent) for sent in sentences]
-        max_sent_len = max(sent_len_list)
-        padded_sent = [self.tokenizer.convert_tokens_to_ids(sent)
-                       + [self.tokenizer.pad_token_id] * (max_sent_len - len(sent))
-                       for sent in sentences]
+        padded_sent = [
+            torch.unsqueeze(torch.tensor(self.tokenizer.convert_tokens_to_ids(sent), device=self.device), dim=0)
+            for sent in sentences]
 
-        output_dict = {"padded_sent": torch.tensor(padded_sent, device=self.device),
+        output_dict = {"padded_sent": padded_sent,
+                       "sentences": sentences,
                        "sent_len_list": sent_len_list,
                        "doc_key": instance["doc_key"],
                        "clusters": instance["clusters"],

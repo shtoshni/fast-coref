@@ -24,17 +24,9 @@ class ControllerPredInvalid(BaseController):
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
-    def get_actions(self, example, pred_mentions):
-        if "clusters" in example:
-            gt_clusters = example["clusters"]
-            if self.mem_type == 'unbounded':
-                return get_actions_unbounded_fast(pred_mentions, gt_clusters)
-            elif self.mem_type == 'learned':
-                return get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents=self.max_ents)
-            elif self.mem_type == 'lru':
-                return get_actions_lru(pred_mentions, gt_clusters, max_ents=self.max_ents)
-        else:
-            return [(-1, 'i')] * len(pred_mentions)
+    @staticmethod
+    def get_actions(pred_mentions, mention_to_cluster, cluster_to_cell=None):
+        return get_actions_unbounded_fast(pred_mentions, mention_to_cluster, cluster_to_cell=cluster_to_cell)
 
     def new_ignore_tuple_to_idx(self, action_tuple_list):
         action_indices = []
@@ -61,24 +53,67 @@ class ControllerPredInvalid(BaseController):
             return []
 
     def forward(self, example, teacher_forcing=False):
-        """
-        Encode a batch of excerpts.
-        """
-        pred_mentions, mention_emb_list, mention_scores, mention_loss = \
-            self.get_mention_embs(example, topk=False)
-
-        follow_gt = self.training or teacher_forcing
-        pred_mentions_list = pred_mentions.tolist()
-        gt_actions = self.get_actions(example, pred_mentions_list)
-
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(example)}
 
-        coref_new_list, new_ignore_list, action_list = self.memory_net(
-            pred_mentions, mention_emb_list, gt_actions, metadata,
-            teacher_forcing=teacher_forcing)
+        follow_gt = self.training or teacher_forcing
+        cell_to_cluster, cluster_to_cell = {}, {}
+        coref_new_list, new_ignore_list, action_list, pred_mentions_list, gt_actions = [], [], [], [], []
         loss = {'total': None}
+        mention_loss = None
+        last_memory = None
+
+        if "clusters" in example:
+            mention_to_cluster = get_mention_to_cluster_idx(example["clusters"])
+
+        word_offset = 0
+        for idx in range(0, len(example["sentences"])):
+            num_words = len(example["sentences"][idx]) - 2
+            cur_clusters = []
+            for orig_cluster in example["clusters"]:
+                cluster = []
+                for ment_start, ment_end in orig_cluster:
+                    if ment_end >= word_offset and ment_start < word_offset + num_words:
+                        cluster.append((ment_start - word_offset, ment_end - word_offset))
+
+                if len(cluster):
+                    cur_clusters.append(cluster)
+            cur_example = {
+                "padded_sent": example["padded_sent"][idx],
+                "sentence_map": example["sentence_map"][word_offset: word_offset + num_words],
+                "sent_len_list": [example["sent_len_list"][idx]],
+                "clusters": cur_clusters
+            }
+
+            cur_pred_mentions, cur_mention_emb_list, _, cur_mention_loss = \
+                self.get_mention_embs(cur_example, topk=False)
+            if mention_loss is None:
+                if cur_mention_loss is not None:
+                    mention_loss = cur_mention_loss
+            else:
+                mention_loss += cur_mention_loss
+
+            cur_pred_mentions = cur_pred_mentions + word_offset
+            word_offset += num_words
+            pred_mentions_list.extend(cur_pred_mentions.tolist())
+
+            if "clusters" in example:
+                cur_gt_actions, cluster_to_cell = self.get_actions(
+                    cur_pred_mentions, mention_to_cluster, cluster_to_cell=cluster_to_cell)
+            else:
+                cur_gt_actions = [(-1, 'i')] * len(cur_pred_mentions)
+
+            gt_actions.extend(cur_gt_actions)
+
+            cur_coref_new_list, cur_new_ignore_list, cur_action_list, last_memory = self.memory_net(
+                cur_pred_mentions, cur_mention_emb_list, cur_gt_actions, metadata, memory_init=last_memory,
+                teacher_forcing=teacher_forcing)
+
+            coref_new_list.extend(cur_coref_new_list)
+            new_ignore_list.extend(cur_new_ignore_list)
+            action_list.extend(cur_action_list)
+
         if follow_gt:
             if mention_loss is not None:
                 loss['entity'] = mention_loss
@@ -92,11 +127,12 @@ class ControllerPredInvalid(BaseController):
                 if self.is_mem_bounded and len(new_ignore_list) > 0:
                     new_ignore_tens = torch.stack(new_ignore_list, dim=0)
                     new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
-                    # ignore_loss = torch.sum(self.label_smoothing_loss_fn(new_ignore_tens, new_ignore_indices))
                     ignore_loss = torch.sum(self.label_smoothing_loss_fn(
                         new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
                     loss['ignore'] = ignore_loss
                     loss['total'] += loss['ignore']
-            return loss, action_list, pred_mentions, gt_actions
+            return loss
         else:
-            return action_list, pred_mentions_list, mention_scores, gt_actions
+            return action_list, pred_mentions_list, gt_actions
+
+

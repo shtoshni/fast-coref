@@ -53,15 +53,17 @@ class BaseMemory(nn.Module):
         if self.entity_rep == 'learned_avg':
             self.alpha = MLP(2 * self.mem_size, 300, 1, num_hidden_layers=1, bias=True, drop_module=drop_module)
 
-        self.last_action_embeddings = nn.Embedding(5, self.emb_size)
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
-    def initialize_memory(self):
-        """Initialize the memory to null with only 1 memory cell to begin with."""
-        mem = torch.zeros(1, self.mem_size, device=self.device)
-        ent_counter = torch.tensor([0.0], device=self.device)
-        last_mention_idx = torch.zeros(1, device=self.device, dtype=torch.long)
+    def initialize_memory(self, mem=None, ent_counter=None, last_mention_idx=None):
+        if mem is None:
+            mem = torch.zeros(1, self.mem_size).to(self.device)
+        if ent_counter is None:
+            ent_counter = torch.tensor([0.0]).to(self.device)
+        if last_mention_idx is None:
+            last_mention_idx = torch.zeros(1).long().to(self.device)
+
         return mem, ent_counter, last_mention_idx
 
     @staticmethod
@@ -109,14 +111,13 @@ class BaseMemory(nn.Module):
             genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_ents, 1)
             feature_embs_list.append(genre_emb)
 
-        if 'last_action' in metadata:
-            last_action_idx = torch.tensor(metadata['last_action'], device=self.device, dtype=torch.long)
-            last_action_emb = self.last_action_embeddings(last_action_idx)
-            num_ents = distance_embs.shape[0]
-            last_action_emb = torch.unsqueeze(last_action_emb, dim=0).repeat(num_ents, 1)
-            feature_embs_list.append(last_action_emb)
-
-        feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
+        try:
+            feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
+        except RuntimeError:
+            print(distance_embs.shape, counter_embs.shape)
+            print(ment_start)
+            print(last_mention_start)
+            print(ent_counter)
         return feature_embs
 
     def get_ment_feature_embs(self, metadata):
@@ -129,11 +130,6 @@ class BaseMemory(nn.Module):
         if 'genre' in metadata:
             genre_emb = metadata['genre']
             feature_embs_list.append(genre_emb)
-
-        if 'last_action' in metadata:
-            last_action_idx = torch.tensor(metadata['last_action'], device=self.device)
-            last_action_emb = self.last_action_embeddings(last_action_idx)
-            feature_embs_list.append(last_action_emb)
 
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs

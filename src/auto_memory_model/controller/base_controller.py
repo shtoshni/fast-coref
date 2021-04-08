@@ -168,7 +168,8 @@ class BaseController(nn.Module):
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
-            mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+            # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+            mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
             if not topk:
                 # Ignore invalid mentions even during training
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
