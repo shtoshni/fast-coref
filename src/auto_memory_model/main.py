@@ -36,8 +36,8 @@ def main():
 
     parser.add_argument('-model_size', default='large', type=str, help='Model size')
     parser.add_argument('-doc_enc', default='independent', type=str,
-                        choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-max_segment_len', default=2048, type=int,
+                        choices=['independent', 'overlap'], help='Windowing mechanism')
+    parser.add_argument('-max_segment_len', default=4096, type=int,
                         help='Max segment length of windowed inputs.')
 
     # Mention variables
@@ -93,6 +93,8 @@ def main():
                         default=None, type=float)
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
+    parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
+                        default=True, action="store_false")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",

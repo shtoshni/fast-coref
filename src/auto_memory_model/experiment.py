@@ -202,12 +202,13 @@ class Experiment:
                 self.save_model(self.best_model_path, model_type='best')
 
             # Save model
-            if self.dataset == 'litbank':
-                # Can train LitBank in one slurm job - Save Disk I/o time
-                if (epoch + 1) % 10 == 0:
+            if self.to_save_model:
+                if self.dataset == 'litbank':
+                    # Can train LitBank in one slurm job - Save Disk I/o time
+                    if (epoch + 1) % 10 == 0:
+                        self.save_model(self.model_path)
+                else:
                     self.save_model(self.model_path)
-            else:
-                self.save_model(self.model_path)
 
             # Get elapsed time
             elapsed_time = time.time() - start_time

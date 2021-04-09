@@ -30,10 +30,10 @@ def main():
                         help='Model size')
     parser.add_argument('-doc_enc', default='independent', type=str,
                         choices=['independent', 'overlap'], help='BERT model type')
-    parser.add_argument('-max_segment_len', default=2048, type=int,
-                        help='Max segment length of BERT segments.')
+    parser.add_argument('-max_segment_len', default=4096, type=int,
+                        help='Max segment length of LM segments.')
     parser.add_argument('-max_training_segments', default=1, type=int,
-                        help='Maximum number of BERT segments in a document.')
+                        help='Maximum number of LM segments in a document.')
     parser.add_argument('-top_span_ratio', default=0.3, type=float,
                         help='Ratio of top spans proposed as mentions.')
 

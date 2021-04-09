@@ -40,7 +40,7 @@ class Experiment:
         self.dataset = dataset
 
         self.orig_data_map = self.load_data(args)
-        self.data_processor = TensorizeDataset()
+        self.data_processor = TensorizeDataset(self.doc_enc)
         self.data_iter_map = {}
 
         # Get model paths

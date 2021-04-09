@@ -11,6 +11,8 @@ class Controller(BaseController):
         """
         Encode a batch of excerpts.
         """
+        # HACKY WAY OF DOING THINGS FOR NOW
+        example["padded_sent"] = example["padded_sent"][0]
         encoded_doc = self.doc_encoder(example)
         num_words = encoded_doc.shape[0]
 
