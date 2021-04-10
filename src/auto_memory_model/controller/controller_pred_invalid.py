@@ -52,26 +52,41 @@ class ControllerPredInvalid(BaseController):
         else:
             return []
 
-    def forward(self, example, teacher_forcing=False):
+    def forward_training(self, instance):
+        pred_mentions, mention_emb_list, mention_scores, train_vars = self.get_mention_embs(instance, topk=False)
+
+        pred_mentions_list = pred_mentions.tolist()
+        mention_to_cluster = get_mention_to_cluster_idx(instance["clusters"])
+        gt_actions, _ = self.get_actions(pred_mentions_list, mention_to_cluster)
+
         metadata = {}
         if self.dataset == 'ontonotes':
-            metadata = {'genre': self.get_genre_embedding(example)}
+            metadata = {'genre': self.get_genre_embedding(instance)}
+        coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
+        loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss'].detach()}
 
-        follow_gt = self.training or teacher_forcing
-        cluster_to_cell = None
-        coref_new_list, new_ignore_list, action_list, pred_mentions_list, gt_actions = [], [], [], [], []
-        loss = {'total': None}
-        mention_loss = None
-        last_memory = None
+        if len(coref_new_list) > 0:
+            coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
+            loss['total'] += coref_loss
+            loss['coref'] = coref_loss.detach()
 
-        if "clusters" in example:
-            mention_to_cluster = get_mention_to_cluster_idx(example["clusters"])
+        return loss
 
-        word_offset = 0
-        for idx in range(0, len(example["sentences"])):
-            num_words = len(example["sentences"][idx]) - 2
+    def forward(self, instance, teacher_forcing=False):
+        metadata = {}
+        if self.dataset == 'ontonotes':
+            metadata = {'genre': self.get_genre_embedding(instance)}
+
+        action_list, pred_mentions_list, gt_actions = [], [], []
+        last_memory, word_offset = None, 0
+        cluster_to_cell, mention_to_cluster = {}, {}
+        if "clusters" in instance:
+            mention_to_cluster = get_mention_to_cluster_idx(instance["clusters"])
+
+        for idx in range(0, len(instance["sentences"])):
+            num_words = len(instance["sentences"][idx]) - 2
             cur_clusters = []
-            for orig_cluster in example["clusters"]:
+            for orig_cluster in instance["clusters"]:
                 cluster = []
                 for ment_start, ment_end in orig_cluster:
                     if ment_end >= word_offset and ment_start < word_offset + num_words:
@@ -80,61 +95,23 @@ class ControllerPredInvalid(BaseController):
                 if len(cluster):
                     cur_clusters.append(cluster)
             cur_example = {
-                "padded_sent": example["padded_sent"][idx],
-                "sentence_map": example["sentence_map"][word_offset: word_offset + num_words],
-                "sent_len_list": [example["sent_len_list"][idx]],
+                "padded_sent": instance["padded_sent"][idx],
+                "sentence_map": instance["sentence_map"][word_offset: word_offset + num_words],
+                "sent_len_list": [instance["sent_len_list"][idx]],
                 "clusters": cur_clusters
             }
 
-            cur_pred_mentions, cur_mention_emb_list, _, cur_mention_loss = \
-                self.get_mention_embs(cur_example, topk=False)
-
-            if mention_loss is None:
-                if cur_mention_loss is not None:
-                    mention_loss = cur_mention_loss
-            else:
-                mention_loss += cur_mention_loss
-
+            cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
             cur_pred_mentions = cur_pred_mentions + word_offset
             word_offset += num_words
             cur_pred_mentions_list = cur_pred_mentions.tolist()
+            cur_gt_actions, cluster_to_cell = self.get_actions(pred_mentions_list, mention_to_cluster, cluster_to_cell)
+            gt_actions.extend(cur_gt_actions)
             pred_mentions_list.extend(cur_pred_mentions_list)
 
-            if "clusters" in example:
-                cur_gt_actions, cluster_to_cell = self.get_actions(
-                    cur_pred_mentions_list, mention_to_cluster, cluster_to_cell=cluster_to_cell)
-            else:
-                cur_gt_actions = [(-1, 'i')] * len(cur_pred_mentions_list)
+            cur_action_list, last_memory = self.memory_net(
+                cur_pred_mentions, cur_mention_emb_list, metadata, memory_init=last_memory)
 
-            gt_actions.extend(cur_gt_actions)
-
-            cur_coref_new_list, cur_new_ignore_list, cur_action_list, last_memory = self.memory_net(
-                cur_pred_mentions, cur_mention_emb_list, cur_gt_actions, metadata, memory_init=last_memory,
-                teacher_forcing=teacher_forcing)
-
-            coref_new_list.extend(cur_coref_new_list)
-            new_ignore_list.extend(cur_new_ignore_list)
             action_list.extend(cur_action_list)
 
-        if follow_gt:
-            if mention_loss is not None:
-                loss['entity'] = mention_loss
-                loss['total'] = loss['entity']
-            if len(coref_new_list) > 0:
-                coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
-                loss['coref'] = coref_loss
-                loss['total'] += loss['coref']
-
-                # Calculate new-ignore loss
-                if self.is_mem_bounded and len(new_ignore_list) > 0:
-                    new_ignore_tens = torch.stack(new_ignore_list, dim=0)
-                    new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
-                    ignore_loss = torch.sum(self.label_smoothing_loss_fn(
-                        new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
-                    loss['ignore'] = ignore_loss
-                    loss['total'] += loss['ignore']
-            return loss
-        else:
-            return action_list, pred_mentions_list, gt_actions
-
-
+        return action_list, pred_mentions_list, gt_actions

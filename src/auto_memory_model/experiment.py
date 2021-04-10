@@ -83,8 +83,8 @@ class Experiment:
         utils.print_model_info(self.model)
         sys.stdout.flush()
 
-        # Only tensorize dev data here; Train needs constant shuffling and test is only needed for final eval
         self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
+        self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'], training=True)
 
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
@@ -114,8 +114,9 @@ class Experiment:
         num_warmup_steps = int(0.1 * num_training_steps)
 
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
+        # No warmup for model params
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-            self.optimizer['mem'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
+            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=num_training_steps)
 
         if self.fine_tune_lr is not None:
             no_decay = ['bias', 'LayerNorm.weight']
@@ -147,8 +148,7 @@ class Experiment:
             # Setup training
             model.train()
 
-            train_data = self.data_processor.tensorize_data(
-                self.orig_data_map['train'], max_training_segments=self.max_training_segments)
+            train_data = self.data_iter_map['train']
             np.random.shuffle(train_data)
 
             encoder_params, task_params = model.get_params()
@@ -158,7 +158,7 @@ class Experiment:
                     for key in optimizer:
                         optimizer[key].zero_grad()
 
-                    loss = model(example)
+                    loss = model.forward_training(example)
                     total_loss = loss['total']
                     if total_loss is None:
                         return None
@@ -174,7 +174,8 @@ class Experiment:
                     self.train_info['global_steps'] += 1
                     return total_loss.item()
 
-                example_loss = handle_example(cur_example)
+                with torch.autograd.set_detect_anomaly(True):
+                    example_loss = handle_example(cur_example)
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -223,40 +224,31 @@ class Experiment:
 
     def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1):
         """Eval model"""
-        # Set the random seed to get consistent results
         model = self.model
         model.eval()
 
-        pred_class_counter, gt_class_counter = defaultdict(int), defaultdict(int)
         num_gt_clusters, num_pred_clusters = 0, 0
-
         inference_time = 0.0
 
         with torch.no_grad():
             log_file = path.join(self.model_dir, split + ".log.jsonl")
             with open(log_file, 'w') as f:
                 # Capture the auxiliary action accuracy
-                corr_actions = 0.0
-                total_actions = 0.0
-
-                # Output file to write the outputs
-                evaluator = CorefEvaluator()
-                oracle_evaluator = CorefEvaluator()
+                corr_actions, total_actions = 0.0, 0.0
+                oracle_evaluator, evaluator = CorefEvaluator(), CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
 
                 logger.info(f"Evaluating on {len(self.data_iter_map[split])} examples")
                 for example in self.data_iter_map[split]:
                     start_time = time.time()
                     action_list, pred_mentions, gt_actions = model(example)
-
-                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
-
+                    # Predicted cluster
+                    raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
                     predicted_clusters, mention_to_predicted =\
-                        get_mention_to_cluster(predicted_clusters, threshold=cluster_threshold)
+                        get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
                     gold_clusters, mention_to_gold =\
                         get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
-                    evaluator.update(predicted_clusters, gold_clusters,
-                                     mention_to_predicted, mention_to_gold)
+                    evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
 
                     elapsed_time = time.time() - start_time
                     inference_time += elapsed_time
@@ -264,29 +256,20 @@ class Experiment:
                     coref_predictions[example["doc_key"]] = predicted_clusters
                     subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
-                    for pred_action, gt_action in zip(action_list, gt_actions):
-                        pred_class_counter[pred_action[1]] += 1
-                        gt_class_counter[gt_action[1]] += 1
-
-                        if tuple(pred_action) == tuple(gt_action):
-                            corr_actions += 1
-
                     total_actions += len(action_list)
                     # Update the number of clusters
                     num_gt_clusters += len(gold_clusters)
                     num_pred_clusters += len(predicted_clusters)
 
+                    # Oracle clustering
                     oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
                     oracle_clusters, mention_to_oracle = \
                         get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
-                    oracle_evaluator.update(oracle_clusters, gold_clusters,
-                                            mention_to_oracle, mention_to_gold)
+                    oracle_evaluator.update(oracle_clusters, gold_clusters, mention_to_oracle, mention_to_gold)
 
                     log_example = dict(example)
                     log_example["pred_mentions"] = pred_mentions
-                    log_example["raw_predicted_clusters"] = predicted_clusters
-
-                    log_example["gt_actions"] = gt_actions
+                    log_example["raw_predicted_clusters"] = raw_predicted_clusters
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 
@@ -296,9 +279,6 @@ class Experiment:
                             del log_example[key]
 
                     f.write(json.dumps(log_example) + "\n")
-
-                print("Ground Truth Actions:", gt_class_counter)
-                print("Predicted Actions:", pred_class_counter)
 
                 # Print individual metrics
                 result_dict = OrderedDict()
@@ -343,8 +323,7 @@ class Experiment:
                 except AttributeError:
                     pass
 
-                logger.info("Action accuracy: %.3f, Oracle F-score: %.3f" %
-                            (corr_actions/(total_actions + 1e-8), oracle_evaluator.get_prf()[2]))
+                logger.info("Oracle F-score: %.3f" % oracle_evaluator.get_prf()[2])
                 logger.info(log_file)
                 logger.handlers[0].flush()
 

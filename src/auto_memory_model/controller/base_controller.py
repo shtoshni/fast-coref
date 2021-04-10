@@ -11,8 +11,7 @@ class BaseController(nn.Module):
     def __init__(self,
                  dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
                  ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
-                 max_ents=None,
-                 emb_size=20,
+                 ment_loss='topk', max_ents=None, emb_size=20,
                  label_smoothing_wt=0.0,
                  dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
         super(BaseController, self).__init__()
@@ -26,6 +25,7 @@ class BaseController(nn.Module):
         self.max_span_width = max_span_width
         self.top_span_ratio = top_span_ratio
 
+        self.ment_loss = ment_loss
         self.label_smoothing_wt = label_smoothing_wt
 
         if doc_enc == 'independent':
@@ -115,12 +115,12 @@ class BaseController(nn.Module):
 
     def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
         gold_ments = torch.zeros(num_words, self.max_span_width, device=self.device)
-        for cluster in clusters:
+        for cluster_idx, cluster in enumerate(clusters):
             for (span_start, span_end) in cluster:
                 span_width = span_end - span_start + 1
                 if span_width <= self.max_span_width:
                     span_width_idx = span_width - 1
-                    gold_ments[span_start, span_width_idx] = 1
+                    gold_ments[span_start, span_width_idx] = cluster_idx + 1
 
         filt_gold_ments = gold_ments.reshape(-1)[flat_cand_mask].float()
         # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
@@ -163,13 +163,20 @@ class BaseController(nn.Module):
         mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
         k = int(self.top_span_ratio * num_words)
-        # k = int(0.2 * num_words)
-        mention_loss = None
+        train_vars = {}
         if self.training:
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
             # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
-            mention_loss = self.mention_loss_fn(mention_logits[topk_indices], filt_gold_mentions[topk_indices])
+            if self.ment_loss == 'all':
+                mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+            else:
+                mention_loss = self.mention_loss_fn(mention_logits[topk_indices],
+                                                    torch.clamp(filt_gold_mentions[topk_indices], 0, 1))
+            uniq_cluster_count = torch.unique(filt_gold_mentions[topk_indices]).shape[0]
+
+            train_vars["mention_loss"] = mention_loss
+            train_vars["uniq_cluster_count"] = uniq_cluster_count
             if not topk:
                 # Ignore invalid mentions even during training
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
@@ -187,13 +194,13 @@ class BaseController(nn.Module):
         sort_scores = topk_starts + 1e-5 * topk_ends
         _, sorted_indices = torch.sort(sort_scores, 0)
 
-        return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], mention_loss
+        return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], train_vars
 
     def get_mention_embs(self, example, topk=False):
         encoded_doc = self.doc_encoder(example)
-        mention_loss = None
+        train_vars = None
         if not self.use_gold_ments:
-            pred_starts, pred_ends, pred_scores, mention_loss = self.get_pred_mentions(example, encoded_doc, topk=topk)
+            pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(example, encoded_doc, topk=topk)
         else:
             mentions = []
             for cluster in example["clusters"]:
@@ -210,14 +217,13 @@ class BaseController(nn.Module):
 
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
-        return pred_mentions, mention_emb_list, pred_scores, mention_loss
+        return pred_mentions, mention_emb_list, pred_scores, train_vars
 
     def calculate_coref_loss(self, action_prob_list, action_tuple_list):
         num_ents = 0
         coref_loss = 0.0
-        target_list = []
+        counter = 0
 
-        # First filter the action tuples to sample invalid
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
             if action_str == 'c':
                 gt_idx = cell_idx
@@ -234,16 +240,11 @@ class BaseController(nn.Module):
                 continue
 
             target = torch.tensor([gt_idx], device=self.device)
-            target_list.append(target)
+            weight = torch.ones_like(action_prob_list[counter], device=self.device)
+            label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
 
-        for idx, target in enumerate(target_list):
-            weight = torch.ones_like(action_prob_list[idx], device=self.device)
-            if self.training:
-                label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
-            else:
-                label_smoothing_fn = LabelSmoothingLoss(smoothing=0.0, dim=0)
-
-            coref_loss += label_smoothing_fn(pred=action_prob_list[idx], target=target, weight=weight)
+            coref_loss += label_smoothing_fn(pred=action_prob_list[counter], target=target, weight=weight)
+            counter += 1
 
         return coref_loss
 

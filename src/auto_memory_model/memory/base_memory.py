@@ -33,11 +33,6 @@ class BaseMemory(nn.Module):
 
         self.drop_module = drop_module
 
-        # 4 Actions + 1 Dummy start action
-        # c = coref, o = overwrite, i = invalid, n = no space (ignore)
-        self.action_str_to_idx = {'c': 0, 'o': 1, 'i': 2, 'n': 3, '<s>': 4}
-        self.action_idx_to_str = ['c', 'o', 'i', 'n', '<s>']
-
         if self.sim_func == 'endpoint':
             self.mem_coref_mlp = MLP(2 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
                                      num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
@@ -56,13 +51,16 @@ class BaseMemory(nn.Module):
         self.distance_embeddings = nn.Embedding(10, self.emb_size)
         self.counter_embeddings = nn.Embedding(10, self.emb_size)
 
-    def initialize_memory(self, mem=None, ent_counter=None, last_mention_start=None):
+    def initialize_memory(self, uniq_cluster_count=None, mem=None, ent_counter=None, last_mention_start=None):
         if mem is None:
-            mem = torch.zeros(1, self.mem_size).to(self.device)
-        if ent_counter is None:
-            ent_counter = torch.tensor([0.0]).to(self.device)
-        if last_mention_start is None:
-            last_mention_start = torch.zeros(1).long().to(self.device)
+            if uniq_cluster_count is None:
+                mem = torch.zeros(1, self.mem_size).to(self.device)
+                ent_counter = torch.tensor([0.0]).to(self.device)
+                last_mention_start = torch.zeros(1).long().to(self.device)
+            else:
+                mem = torch.zeros(uniq_cluster_count, self.mem_size).to(self.device)
+                ent_counter = torch.zeros(uniq_cluster_count, dtype=torch.long).to(self.device)
+                last_mention_start = torch.zeros(uniq_cluster_count, dtype=torch.long).to(self.device)
 
         return mem, ent_counter, last_mention_start
 
@@ -90,10 +88,6 @@ class BaseMemory(nn.Module):
         counter_embs = self.counter_embeddings(counter_buckets)
         return counter_embs
 
-    def get_last_action_emb(self, action_str):
-        action_emb = self.action_str_to_idx[action_str]
-        return self.last_action_emb(torch.tensor(action_emb, device=self.device))
-
     @staticmethod
     def get_coref_mask(ent_counter):
         cell_mask = (ent_counter > 0.0).float()
@@ -111,13 +105,7 @@ class BaseMemory(nn.Module):
             genre_emb = torch.unsqueeze(genre_emb, dim=0).repeat(num_ents, 1)
             feature_embs_list.append(genre_emb)
 
-        try:
-            feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
-        except RuntimeError:
-            print(distance_embs.shape, counter_embs.shape)
-            print(ment_start)
-            print(last_mention_start)
-            print(ent_counter)
+        feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs
 
     def get_ment_feature_embs(self, metadata):
@@ -134,8 +122,7 @@ class BaseMemory(nn.Module):
         feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
         return feature_embs
 
-    def get_coref_new_scores(self, query_vector, mem_vectors,
-                             ent_counter, feature_embs, ment_score=0):
+    def get_coref_new_scores(self, query_vector, mem_vectors, ent_counter, feature_embs, ment_score=0):
         # Repeat the query vector for comparison against all cells
         num_ents = mem_vectors.shape[0]
         rep_query_vector = query_vector.repeat(num_ents, 1)  # M x H
@@ -146,9 +133,7 @@ class BaseMemory(nn.Module):
             pair_score = self.mem_coref_mlp(pair_vec)
         elif self.sim_func == 'cosine':
             cosine_sim = self.cosine_sim_fn(mem_vectors, rep_query_vector)
-            # print(cosine_sim.shape)
             other_factor = self.mem_coref_mlp(feature_embs)
-            # print(other_factor.shape)
             pair_score = torch.unsqueeze(cosine_sim + torch.squeeze(other_factor, dim=-1), dim=-1)
         else:
             pair_vec = torch.cat([mem_vectors, rep_query_vector, mem_vectors * rep_query_vector, feature_embs], dim=-1)
@@ -158,24 +143,20 @@ class BaseMemory(nn.Module):
 
         coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0], device=self.device)], dim=0)
         # Append dummy score of 0.0 for new entity
-        coref_new_scores = torch.cat(([coref_score, torch.tensor([self.new_ent_score], device=self.device)]), dim=0)
-
-        coref_new_not_scores = coref_new_scores * coref_new_mask + (1 - coref_new_mask) * (-1e4)
-        return coref_new_not_scores
+        coref_new_score = torch.cat(([coref_score, torch.tensor([self.new_ent_score], device=self.device)]), dim=0)
+        coref_new_score = coref_new_score * coref_new_mask + (1 - coref_new_mask) * (-1e4)
+        return coref_new_score
 
     @staticmethod
-    def assign_cluster(coref_new_scores, first_overwrite):
-        if first_overwrite:
-            return 0, 'o'
+    def assign_cluster(coref_new_scores):
+        num_ents = coref_new_scores.shape[0] - 1
+        pred_max_idx = torch.argmax(coref_new_scores).item()
+        if pred_max_idx < num_ents:
+            # Coref
+            return pred_max_idx, 'c'
         else:
-            num_ents = coref_new_scores.shape[0] - 1
-            pred_max_idx = torch.argmax(coref_new_scores).item()
-            if pred_max_idx < num_ents:
-                # Coref
-                return pred_max_idx, 'c'
-            else:
-                # New cluster
-                return num_ents, 'o'
+            # New cluster
+            return num_ents, 'o'
 
     def coref_update(self, mem_vectors, query_vector, cell_idx, ent_counter):
         if self.entity_rep == 'learned_avg':

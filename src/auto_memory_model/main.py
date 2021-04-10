@@ -51,10 +51,6 @@ def main():
     parser.add_argument('-mem_type', default='unbounded',
                         choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
                         help="Memory type.")
-    parser.add_argument('-max_ents', default=20, type=int,
-                        help="Number of maximum entities in memory.")
-    parser.add_argument('-eval_max_ents', default=None, type=int,
-                        help="Number of maximum entities in memory during inference.")
     parser.add_argument('-mlp_size', default=3000, type=int,
                         help='MLP size used in the model')
     parser.add_argument('-cluster_mlp_size', default=3000, type=int,
@@ -63,8 +59,15 @@ def main():
                         help='Number of hidden layers in other MLPs')
     parser.add_argument('-entity_rep', default='wt_avg', type=str,
                         choices=['learned_avg', 'wt_avg', 'max'], help='Entity representation.')
+    parser.add_argument('-sim_func', default='hadamard', choices=['hadamard', 'cosine', 'endpoint'],
+                        help='Similarity function', type=str)
     parser.add_argument('-emb_size', default=20, type=int,
                         help='Embedding size of features.')
+    # Only relevant for bounded memory models
+    parser.add_argument('-max_ents', default=20, type=int,
+                        help="Number of maximum entities in memory.")
+    parser.add_argument('-eval_max_ents', default=None, type=int,
+                        help="Number of maximum entities in memory during inference.")
 
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
@@ -73,16 +76,14 @@ def main():
                         help='Number of training docs.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
-    parser.add_argument('-max_training_segments', default=1, type=int,
-                        help='Maximum number of windows in a document during training.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
+    parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
+                        help='Mention loss computed over topk or all mentions.')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=25, type=int)
-    parser.add_argument('-sim_func', default='hadamard', choices=['hadamard', 'cosine', 'endpoint'],
-                        help='Similarity function', type=str)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-max_gradient_norm',
@@ -112,7 +113,7 @@ def main():
                 'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
                 'dropout_rate', 'seed', 'init_lr', 'max_epochs',
-                'max_training_segments', 'label_smoothing_wt',  # weights & sampling
+                'label_smoothing_wt', 'ment_loss',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
 
