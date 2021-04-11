@@ -169,7 +169,7 @@ class BaseController(nn.Module):
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
             # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
             if self.ment_loss == 'all':
-                mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
+                mention_loss = self.mention_loss_fn(mention_logits, torch.clamp(filt_gold_mentions, 0, 1))
             else:
                 mention_loss = self.mention_loss_fn(mention_logits[topk_indices],
                                                     torch.clamp(filt_gold_mentions[topk_indices], 0, 1))

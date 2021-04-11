@@ -25,8 +25,12 @@ class ControllerPredInvalid(BaseController):
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
     @staticmethod
-    def get_actions(pred_mentions, mention_to_cluster, cluster_to_cell=None):
-        return get_actions_unbounded_fast(pred_mentions, mention_to_cluster, cluster_to_cell=cluster_to_cell)
+    def get_actions(pred_mentions, instance):
+        if "clusters" in instance:
+            mention_to_cluster = get_mention_to_cluster_idx(instance["clusters"])
+            return get_actions_unbounded_fast(pred_mentions, mention_to_cluster)
+        else:
+            return [(-1, 'i')] * len(pred_mentions)
 
     def new_ignore_tuple_to_idx(self, action_tuple_list):
         action_indices = []
@@ -56,8 +60,7 @@ class ControllerPredInvalid(BaseController):
         pred_mentions, mention_emb_list, mention_scores, train_vars = self.get_mention_embs(instance, topk=False)
 
         pred_mentions_list = pred_mentions.tolist()
-        mention_to_cluster = get_mention_to_cluster_idx(instance["clusters"])
-        gt_actions, _ = self.get_actions(pred_mentions_list, mention_to_cluster)
+        gt_actions = self.get_actions(pred_mentions_list, instance)
 
         metadata = {}
         if self.dataset == 'ontonotes':
@@ -79,39 +82,24 @@ class ControllerPredInvalid(BaseController):
 
         action_list, pred_mentions_list, gt_actions = [], [], []
         last_memory, word_offset = None, 0
-        cluster_to_cell, mention_to_cluster = {}, {}
-        if "clusters" in instance:
-            mention_to_cluster = get_mention_to_cluster_idx(instance["clusters"])
 
         for idx in range(0, len(instance["sentences"])):
             num_words = len(instance["sentences"][idx]) - 2
-            cur_clusters = []
-            for orig_cluster in instance["clusters"]:
-                cluster = []
-                for ment_start, ment_end in orig_cluster:
-                    if ment_end >= word_offset and ment_start < word_offset + num_words:
-                        cluster.append((ment_start - word_offset, ment_end - word_offset))
-
-                if len(cluster):
-                    cur_clusters.append(cluster)
             cur_example = {
                 "padded_sent": instance["padded_sent"][idx],
                 "sentence_map": instance["sentence_map"][word_offset: word_offset + num_words],
                 "sent_len_list": [instance["sent_len_list"][idx]],
-                "clusters": cur_clusters
             }
 
             cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
             cur_pred_mentions = cur_pred_mentions + word_offset
             word_offset += num_words
             cur_pred_mentions_list = cur_pred_mentions.tolist()
-            cur_gt_actions, cluster_to_cell = self.get_actions(pred_mentions_list, mention_to_cluster, cluster_to_cell)
-            gt_actions.extend(cur_gt_actions)
             pred_mentions_list.extend(cur_pred_mentions_list)
 
             cur_action_list, last_memory = self.memory_net(
                 cur_pred_mentions, cur_mention_emb_list, metadata, memory_init=last_memory)
-
             action_list.extend(cur_action_list)
 
+        gt_actions = self.get_actions(pred_mentions_list, instance)
         return action_list, pred_mentions_list, gt_actions

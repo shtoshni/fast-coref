@@ -1,12 +1,9 @@
 from coref_utils.utils import get_mention_to_cluster_idx
 
 
-def get_actions_unbounded_fast(pred_mentions, mention_to_cluster, cluster_to_cell=None):
+def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
     actions = []
-    if cluster_to_cell is None:
-        cluster_to_cell = {}
-
-    cell_counter = len(cluster_to_cell)
+    cell_counter = 0
     for idx, mention in enumerate(pred_mentions):
         if tuple(mention) not in mention_to_cluster:
             actions.append((-1, 'i'))

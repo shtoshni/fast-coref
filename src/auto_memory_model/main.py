@@ -80,7 +80,7 @@ def main():
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
-    parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
+    parser.add_argument('-ment_loss', default='all', type=str, choices=['all', 'topk'],
                         help='Mention loss computed over topk or all mentions.')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=25, type=int)

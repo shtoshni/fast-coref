@@ -1,5 +1,3 @@
-from copy import deepcopy
-import random
 import torch
 
 from transformers import LongformerTokenizerFast

@@ -1,6 +1,5 @@
 """This is an adaptation of the tokenizer used for LitBank in the overlapping segments setting."""
 import torch
-from data_processing.overlap_ontonotes import normalize_word
 
 
 class DocumentState(object):
@@ -10,7 +9,7 @@ class DocumentState(object):
         self.tokens = []
         self.subtokens = []
         self.segments = []
-        self.real_segments = []
+        self.segments_indices = []
         self.start_indices = []
         self.end_indices = []
         self.subtoken_map = []
@@ -28,9 +27,9 @@ class DocumentState(object):
 
         return {
             "sentences": self.segments,
-            "real_sentences": self.real_segments,
+            "sentences_indices": self.segments_indices,
             "sent_len_list": self.sent_len_list,
-            "padded_sent": torch.tensor(self.padded_sent),
+            "padded_sent": self.padded_sent,
             "start_indices": self.start_indices,
             "end_indices": self.end_indices,
             'sentence_map': torch.tensor([0] * num_words),  # Assume no sentence boundaries are specified
@@ -40,18 +39,13 @@ class DocumentState(object):
 
 
 def flatten(l):
-  return [item for sublist in l for item in sublist]
+    return [item for sublist in l for item in sublist]
 
 
-def split_into_segments(document_state, constraints1, constraints2, max_segment_len=2048):
+def split_into_segments_independent(document_state, constraints1, constraints2, max_segment_len=4096):
     current = 0
-    prev_current = -1
-    start_idx = 0
-
+    # previous_token = 0
     while current < len(document_state.subtokens):
-        if prev_current == current:
-            break
-        # print(current, len(document_state.subtokens))
         end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
         while end >= current and not constraints1[end]:
@@ -63,42 +57,10 @@ def split_into_segments(document_state, constraints1, constraints2, max_segment_
                 end -= 1
             if end < current:
                 raise Exception("Can't find valid segment")
-
-        # print(end)
-        if (end + 1) == len(document_state.subtokens):
-            end_idx = end + 1
-        else:
-            last_seg_length = end - current + 1
-            # Move current to the middle of last window
-            ovlp_current = end - last_seg_length//2
-            while ovlp_current < end and not constraints1[ovlp_current]:
-                ovlp_current += 1
-            # Move to next sentence start token
-            ovlp_current += 1
-            if ovlp_current == (end + 1):
-                ovlp_current = end - last_seg_length//2
-                while ovlp_current < end and not constraints2[ovlp_current]:
-                    ovlp_current += 1
-                # Move to next word
-                ovlp_current += 1
-
-            extra_length = (end + 1 - ovlp_current)//2
-            end_idx = ovlp_current + extra_length
-
-        document_state.real_segments.append(document_state.subtokens[current:end + 1])
-        document_state.segments.append(document_state.subtokens[start_idx:end_idx])
-        subtoken_map = document_state.subtoken_map[start_idx: end_idx]
+        document_state.segments.append(document_state.subtokens[current:end + 1])
+        subtoken_map = document_state.subtoken_map[current: end + 1]
         document_state.segment_subtoken_map.append(subtoken_map)
-
-        document_state.start_indices.append(start_idx - current)
-        document_state.end_indices.append(end_idx - current)
-        # print(start_idx, end_idx)
-        start_idx = end_idx
-
-        if (end + 1) == len(document_state.subtokens):
-            current = end + 1
-        else:
-            current = ovlp_current
+        current = end + 1
 
 
 def get_tokenized_doc(doc_str, tokenizer, document_state=None):
@@ -128,9 +90,10 @@ def get_tokenized_doc(doc_str, tokenizer, document_state=None):
     return document_state
 
 
-def tokenize_and_segment_doc(doc_str, lm_tokenizer, max_segment_len=2048):
+def tokenize_and_segment_doc(doc_str, lm_tokenizer, max_segment_len=4096):
     document_state = get_tokenized_doc(doc_str, lm_tokenizer)
-    document = post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=max_segment_len)
+    document = post_tokenization_processing(
+        document_state, lm_tokenizer, max_segment_len=max_segment_len)
     return document
 
 
@@ -145,16 +108,17 @@ def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=2048):
 
 
 def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=2048):
-    split_into_segments(document_state, document_state.sentence_end, document_state.token_end,
-                        max_segment_len=max_segment_len)
+    split_into_segments_independent(
+        document_state, document_state.sentence_end, document_state.token_end, max_segment_len=max_segment_len)
 
-    sentences = [([lm_tokenizer.cls_token] + sent + [lm_tokenizer.sep_token])
-                 for sent in document_state.real_segments]
+    sentences = [lm_tokenizer.convert_tokens_to_ids(sent) for sent in document_state.segments]
     sent_len_list = [len(sent) for sent in sentences]
     document_state.sent_len_list = sent_len_list
-    max_sent_len = max(sent_len_list)
-    padded_sent = [lm_tokenizer.convert_tokens_to_ids(sent)
-                   + [lm_tokenizer.pad_token_id] * (max_sent_len - len(sent)) for sent in sentences]
+    document_state.segments_indices = sentences
+
+    # Tensorize sentence - Streaming is done one window at a time, so no padding required
+    padded_sent = [torch.unsqueeze(
+        torch.tensor([lm_tokenizer.cls_token_id] + sent + [lm_tokenizer.sep_token_id]), dim=0) for sent in sentences]
     document_state.padded_sent = padded_sent
     return document_state.finalize()
 
