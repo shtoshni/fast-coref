@@ -23,15 +23,15 @@ class Inference:
         self.tokenizer = LongformerTokenizerFast.from_pretrained(
             'allenai/longformer-large-4096', add_prefix_space=True)
 
-    def perform_coreference(self, doc, doc_key="nw"):
-        if isinstance(doc, str):
+    def perform_coreference(self, document, doc_key="nw"):
+        if isinstance(document, str):
             tokenized_doc = tokenize_and_segment_doc(
-                doc, self.tokenizer, max_segment_len=self.max_segment_len)
-        elif isinstance(doc, list):
+                document, self.tokenizer, max_segment_len=self.max_segment_len)
+        elif isinstance(document, list):
             tokenized_doc = tokenize_and_segment_doc_list(
-                doc, self.tokenizer, max_segment_len=self.max_segment_len)
-        elif isinstance(doc, dict):
-            tokenized_doc = doc
+                document, self.tokenizer, max_segment_len=self.max_segment_len)
+        elif isinstance(document, dict):
+            tokenized_doc = document
         else:
             raise ValueError
 
@@ -41,16 +41,11 @@ class Inference:
         # print(len(tokenized_doc["sentences"]))
         output_doc_dict = tokenized_doc
         doc_tokens = flatten(tokenized_doc["sentences"])
-        subtoken_map = tokenized_doc["subtoken_map"]
 
         with torch.no_grad():
             pred_actions, pred_mentions = self.model(tokenized_doc)[:2]
 
         idx_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
-
-        mentions = []
-        for (ment_start, ment_end) in pred_mentions:
-            mentions.append((subtoken_map[ment_start], subtoken_map[ment_end]))
 
         clusters = []
         for idx_cluster in idx_clusters:

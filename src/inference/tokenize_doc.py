@@ -97,7 +97,7 @@ def tokenize_and_segment_doc(doc_str, lm_tokenizer, max_segment_len=4096):
     return document
 
 
-def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=2048):
+def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=4096):
     document_state = DocumentState()
     for doc_str in doc_list:
         get_tokenized_doc(doc_str, lm_tokenizer, document_state=document_state)
@@ -107,7 +107,7 @@ def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=2048):
     return document
 
 
-def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=2048):
+def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=4096):
     split_into_segments_independent(
         document_state, document_state.sentence_end, document_state.token_end, max_segment_len=max_segment_len)
 

@@ -174,8 +174,7 @@ class Experiment:
                     self.train_info['global_steps'] += 1
                     return total_loss.item()
 
-                with torch.autograd.set_detect_anomaly(True):
-                    example_loss = handle_example(cur_example)
+                example_loss = handle_example(cur_example)
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -346,6 +345,8 @@ class Experiment:
             output_dict[key] = val
 
         for split in ['test', 'dev', 'train']:
+            if split == 'train':
+                self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'])
             if split not in self.data_iter_map:
                 self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
 

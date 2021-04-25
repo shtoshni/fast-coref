@@ -4,15 +4,13 @@ import torch
 
 
 class BaseDocEncoder(nn.Module):
-    def __init__(self, model_size='base', finetune=False, max_training_segments=4, device="cuda", **kwargs):
+    def __init__(self, model_size='base', finetune=False, device="cuda", **kwargs):
         super(BaseDocEncoder, self).__init__()
         self.device = device
         self.finetune = finetune
 
         if self.finetune:
             print("\nFinetuning the document encoder\n")
-
-        self.max_training_segments = max_training_segments
 
         gradient_checkpointing = False
         if finetune and self.training:
@@ -30,7 +28,7 @@ class BaseDocEncoder(nn.Module):
 
         if not self.finetune:
             for param in self.lm_encoder.parameters():
-                # Don't update BERT params
+                # Don't update encoder params
                 param.requires_grad = False
 
         self.hsize = self.lm_encoder.config.hidden_size

@@ -4,6 +4,7 @@ from coref_utils.utils import get_mention_to_cluster_idx
 def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
     actions = []
     cell_counter = 0
+    cluster_to_cell = {}
     for idx, mention in enumerate(pred_mentions):
         if tuple(mention) not in mention_to_cluster:
             actions.append((-1, 'i'))
@@ -19,7 +20,7 @@ def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
                 actions.append((cell_counter, 'o'))
                 cell_counter += 1
 
-    return actions, cluster_to_cell
+    return actions
 
 
 def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):

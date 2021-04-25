@@ -57,7 +57,7 @@ class ControllerPredInvalid(BaseController):
             return []
 
     def forward_training(self, instance):
-        pred_mentions, mention_emb_list, mention_scores, train_vars = self.get_mention_embs(instance, topk=False)
+        pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(instance, topk=False)
 
         pred_mentions_list = pred_mentions.tolist()
         gt_actions = self.get_actions(pred_mentions_list, instance)
@@ -66,12 +66,12 @@ class ControllerPredInvalid(BaseController):
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(instance)}
         coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
-        loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss'].detach()}
+        loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss']}
 
         if len(coref_new_list) > 0:
             coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
             loss['total'] += coref_loss
-            loss['coref'] = coref_loss.detach()
+            loss['coref'] = coref_loss
 
         return loss
 
