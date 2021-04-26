@@ -23,9 +23,6 @@ class DocumentState(object):
         self.subtokens = []
         self.info = []
         self.segments = []
-        self.real_segments = []
-        self.start_indices = []
-        self.end_indices = []
         self.subtoken_map = []
         self.segment_subtoken_map = []
         self.sentence_map = []
@@ -36,6 +33,25 @@ class DocumentState(object):
         self.segment_info = []
 
     def finalize(self):
+        # finalized: segments, segment_subtoken_map
+        # populate speakers from info
+        subtoken_idx = 0
+        for segment in self.segment_info:
+            speakers = []
+            for i, tok_info in enumerate(segment):
+                if tok_info is None and (i == 0 or i == len(segment) - 1):
+                    speakers.append('[SPL]')
+                elif tok_info is None:
+                    speakers.append(speakers[-1])
+                else:
+                    speakers.append(tok_info[9])
+                    if tok_info[4] == 'PRP':
+                        self.pronouns.append(subtoken_idx)
+                subtoken_idx += 1
+            self.speakers += [speakers]
+        # populate sentence map
+
+        # populate clusters
         first_subtoken_index = -1
         for seg_idx, segment in enumerate(self.segment_info):
             for i, tok_info in enumerate(segment):
@@ -81,15 +97,12 @@ class DocumentState(object):
         subtoken_map = flatten(self.segment_subtoken_map)
         assert len(all_mentions) == len(set(all_mentions))
         num_words = len(flatten(self.segments))
-        # assert num_words == len(flatten(self.speakers))
+        assert num_words == len(flatten(self.speakers))
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         assert num_words == len(sentence_map), (num_words, len(sentence_map))
         return {
             "doc_key": self.doc_key,
             "sentences": self.segments,
-            "real_sentences": self.real_segments,
-            "start_indices": self.start_indices,
-            "end_indices": self.end_indices,
             "clusters": merged_clusters,
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
@@ -109,13 +122,7 @@ def flatten(l):
 
 def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
     current = 0
-    prev_current = -1
-    start_idx = 0
-
     while current < len(document_state.subtokens):
-        if prev_current == current:
-            break
-        # print(current, len(document_state.subtokens))
         end = min(current + max_segment_len - 1 - 2,
                   len(document_state.subtokens) - 1)
         while end >= current and not constraints1[end]:
@@ -127,44 +134,13 @@ def split_into_segments(document_state, max_segment_len, constraints1, constrain
                 end -= 1
             if end < current:
                 raise Exception("Can't find valid segment")
-
-        # print(end)
-        if (end + 1) == len(document_state.subtokens):
-            end_idx = end + 1
-        else:
-            last_seg_length = end - current + 1
-            # Move current to the middle of last window
-            ovlp_current = end - last_seg_length//2
-            while ovlp_current < end and not constraints1[ovlp_current]:
-                ovlp_current += 1
-            # Move to next sentence start token
-            ovlp_current += 1
-            if ovlp_current == (end + 1):
-                ovlp_current = end - last_seg_length//2
-                while ovlp_current < end and not constraints2[ovlp_current]:
-                    ovlp_current += 1
-                # Move to next word
-                ovlp_current += 1
-
-            extra_length = (end + 1 - ovlp_current)//2
-            end_idx = ovlp_current + extra_length
-
-        document_state.real_segments.append(document_state.subtokens[current:end + 1])
-        document_state.segments.append(document_state.subtokens[start_idx:end_idx])
-        subtoken_map = document_state.subtoken_map[start_idx: end_idx]
+        document_state.segments.append(
+            document_state.subtokens[current:end + 1])
+        subtoken_map = document_state.subtoken_map[current: end + 1]
         document_state.segment_subtoken_map.append(subtoken_map)
-
-        info = document_state.info[start_idx: end_idx]
+        info = document_state.info[current: end + 1]
         document_state.segment_info.append(info)
-        document_state.start_indices.append(start_idx - current)
-        document_state.end_indices.append(end_idx - current)
-        # print(start_idx, end_idx)
-        start_idx = end_idx
-
-        if (end + 1) == len(document_state.subtokens):
-            current = end + 1
-        else:
-            current = ovlp_current
+        current = end + 1
 
 
 def get_sentence_map(segments, sentence_end):
@@ -173,93 +149,54 @@ def get_sentence_map(segments, sentence_end):
     sent_end_idx = 0
     assert len(sentence_end) == sum([len(s) for s in segments])
     for segment in segments:
-        # sent_map.append(current)
         for i in range(len(segment)):
             sent_map.append(current)
             current += int(sentence_end[sent_end_idx])
             sent_end_idx += 1
-        # sent_map.append(current)
     return sent_map
 
 
-def get_document(document_lines, tokenizer, segment_len):
-    document_state = DocumentState(document_lines[0])
+def get_document(instance, tokenizer, segment_len):
+    document_state = DocumentState(instance["id"])
     word_idx = -1
-    for line in document_lines[1]:
-        row = line.split()
-        sentence_end = len(row) == 0
-        if not sentence_end:
-            assert len(row) >= 12
-            if len(row) == 12:
-                row.append('-')
-            word_idx += 1
-            word = normalize_word(row[3])
-            subtokens = tokenizer.tokenize(word)
-            document_state.tokens.append(word)
-            document_state.token_end += ([False]
-                                         * (len(subtokens) - 1)) + [True]
+
+    for sentence in instance["sentences"]:
+        for word in sentence:
+            subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
+            document_state.token_end += ([False] * (len(subtokens) - 1)) + [True]
             for sidx, subtoken in enumerate(subtokens):
                 document_state.subtokens.append(subtoken)
-                info = None if sidx != 0 else (row + [len(subtokens)])
-                document_state.info.append(info)
                 document_state.sentence_end.append(False)
                 document_state.subtoken_map.append(word_idx)
         else:
             document_state.sentence_end[-1] = True
-    # split_into_segments(document_state, segment_len, document_state.token_end)
-    # split_into_segments(document_state, segment_len, document_state.sentence_end)
-    constraints1 = document_state.sentence_end
-    split_into_segments(document_state, segment_len,
-                        constraints1, document_state.token_end)
-    stats["max_sent_len"] = max(max(
-        [len(s) for s in document_state.segments]), stats["max_sent_len"])
+
+    split_into_segments(document_state, segment_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
 
 
-def minimize_partition(split, cross_val_split, labels, stats, tokenizer,
-                       seg_len, input_dir, output_dir):
-    input_path = path.join(input_dir, "{}/{}.conll".format(cross_val_split, split))
-    output_path = path.join(output_dir, "{}/{}.{}.jsonlines".format(
-        cross_val_split, split, seg_len))
+def minimize_partition(split, tokenizer, seg_len, input_dir, output_dir):
+    input_path = path.join(input_dir, "{}.jsonl".format(split))
+    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
-    documents = []
-    with open(input_path, "r") as input_file:
+    with open(input_path, "r") as input_file, open(output_path, "w") as output_file:
         for line in input_file.readlines():
-            begin_document_match = re.match(conll.BEGIN_DOCUMENT_REGEX, line)
-            if begin_document_match:
-                doc_key = conll.get_doc_key(
-                    begin_document_match.group(1), begin_document_match.group(2))
-                documents.append((doc_key, []))
-            elif line.startswith("#end document"):
-                continue
-            else:
-                documents[-1][1].append(line)
-    with open(output_path, "w") as output_file:
-        for document_lines in documents:
-            document = get_document(
-                document_lines, tokenizer, seg_len)
+            instance = json.loads(line.strip())
+            document = get_document(instance, tokenizer, seg_len)
             output_file.write(json.dumps(document))
             output_file.write("\n")
             count += 1
     print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(labels, stats, cross_val_split, seg_len, input_dir, output_dir):
-    # do_lower_case = True if 'chinese' in vocab_file else False
+def minimize_split(seg_len, input_dir, output_dir):
     tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
     # Create cross validation output dir
-    cross_val_dir = path.join(output_dir, str(cross_val_split))
-    if not path.exists(cross_val_dir):
-        os.makedirs(cross_val_dir)
 
-    minimize_partition("dev", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("train", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("test", cross_val_split,
-                       labels, stats, tokenizer, seg_len, input_dir, output_dir)
+    minimize_partition("dev", tokenizer, seg_len, input_dir, output_dir)
+    minimize_partition("train", tokenizer, seg_len, input_dir, output_dir)
 
 
 if __name__ == "__main__":
@@ -267,14 +204,5 @@ if __name__ == "__main__":
     output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    for cross_val_split in range(10):
-        for seg_len in [1024, 1536, 2048, 4096]:
-            labels = collections.defaultdict(set)
-            stats = collections.defaultdict(int)
-            minimize_split(labels, stats, cross_val_split,
-                           seg_len, input_dir, output_dir)
-            for k, v in labels.items():
-                print("{} = [{}]".format(k, ", ".join(
-                    "\"{}\"".format(label) for label in v)))
-            for k, v in stats.items():
-                print("{} = {}".format(k, v))
+    for seg_len in [2048, 4096]:
+        minimize_split(seg_len, input_dir, output_dir)
