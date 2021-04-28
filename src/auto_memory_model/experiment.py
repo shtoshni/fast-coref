@@ -5,7 +5,7 @@ import time
 import logging
 import torch
 import json
-from collections import defaultdict, OrderedDict
+from collections import OrderedDict
 import numpy as np
 import random
 from transformers import get_linear_schedule_with_warmup, AdamW
@@ -33,10 +33,14 @@ class Experiment:
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.canonical_cluster_threshold = 1
-        else:
+        elif self.dataset == 'ontonotes':
             # OntoNotes
-            self.update_frequency = 100
+            self.update_frequency = 500
             self.canonical_cluster_threshold = 2
+        elif self.dataset == 'preco':
+            # OntoNotes
+            self.update_frequency = 500
+            self.canonical_cluster_threshold = 1
 
         self.orig_data_map = self.load_data()
         self.data_processor = TensorizeDataset(self.doc_enc)
@@ -49,12 +53,12 @@ class Experiment:
         self.model_path = path.join(self.model_dir, 'model.pth')
         self.best_model_path = path.join(self.best_model_dir, 'model.pth')
 
-        self.optimizer, self.optim_scheduler = {}, {}
+        self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
 
         if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
-            self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_epochs': 0}
-            self.max_stuck_epochs = 10  # Maximum epochs without improvement in dev performance
+            self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
+            self.patience = 10  # Maximum evals without improvement in dev performance
             # Initialize model and training metadata
             self.setup_training()
             self.train()
@@ -110,10 +114,13 @@ class Experiment:
         np.random.seed(self.seed)
         random.seed(self.seed)
 
+        self.scaler = torch.cuda.amp.GradScaler()
+
         num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
         num_warmup_steps = int(0.1 * num_training_steps)
 
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
+        # self.optimizer['mem'] = FusedAdam(self.model.get_params()[1], lr=self.init_lr)
         # No warmup for model params
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
             self.optimizer['mem'], num_warmup_steps=0, num_training_steps=num_training_steps)
@@ -130,17 +137,17 @@ class Experiment:
                  'weight_decay': 0.0}
             ]
 
-            self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr)
-
+            # self.optimizer['doc'] = FusedAdam(grouped_param, lr=self.init_lr, weight_decay=0.01)
+            self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr, eps=1e-6)
             self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
                 self.optimizer['doc'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
 
     def train(self):
         """Train model"""
-        if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
+        if self.train_info['num_stuck_evals'] >= self.patience:
             return
 
-        model, optimizer, scheduler = self.model, self.optimizer, self.optim_scheduler
+        model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 
         for epoch in range(self.train_info['epoch'], self.max_epochs):
             logger.info("\n\nStart Epoch %d" % (epoch + 1))
@@ -155,26 +162,41 @@ class Experiment:
 
             for cur_example in train_data:
                 def handle_example(example):
+                    self.train_info['global_steps'] += 1
                     for key in optimizer:
                         optimizer[key].zero_grad()
 
-                    loss = model.forward_training(example)
-                    total_loss = loss['total']
-                    if total_loss is None:
-                        return None
+                    with torch.cuda.amp.autocast():
+                        loss = model.forward_training(example)
+                        total_loss = loss['total']
+                        if total_loss is None:
+                            return None
 
-                    total_loss.backward()
+                    scaler.scale(total_loss).backward()
+                    for key in optimizer:
+                        scaler.unscale_(optimizer[key])
+
                     torch.nn.utils.clip_grad_norm_(encoder_params, self.max_gradient_norm)
                     torch.nn.utils.clip_grad_norm_(task_params, self.max_gradient_norm)
 
                     for key in optimizer:
-                        optimizer[key].step()
+                        scaler.step(optimizer[key])
                         scheduler[key].step()
 
-                    self.train_info['global_steps'] += 1
+                    scaler.update()
                     return total_loss.item()
 
                 example_loss = handle_example(cur_example)
+
+                if self.eval_per_k_steps and (self.train_info['global_steps'] % self.eval_per_k_steps == 0):
+                    fscore = self.periodic_model_eval()
+                    # Get elapsed time
+                    elapsed_time = time.time() - start_time
+                    logger.info("Steps: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
+                                % (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
+
+                    if self.train_info['num_stuck_evals'] >= self.patience:
+                        return
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -186,40 +208,43 @@ class Experiment:
             sys.stdout.flush()
             # Update epochs done
             self.train_info['epoch'] = epoch + 1
-
-            # Dev performance
-            cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
-            fscore = self.evaluate_model(cluster_threshold=cluster_threshold)['fscore']
-
-            # Assume that the model didn't improve
-            self.train_info['num_stuck_epochs'] += 1
-
-            # Update model if dev performance improves
-            if fscore > self.train_info['val_perf']:
-                self.train_info['num_stuck_epochs'] = 0
-                self.train_info['val_perf'] = fscore
-                logger.info('Saving best model')
-                self.save_model(self.best_model_path, model_type='best')
-
-            # Save model
-            if self.to_save_model:
-                if self.dataset == 'litbank':
-                    # Can train LitBank in one slurm job - Save Disk I/o time
-                    if (epoch + 1) % 10 == 0:
-                        self.save_model(self.model_path)
-                else:
-                    self.save_model(self.model_path)
-
-            # Get elapsed time
-            elapsed_time = time.time() - start_time
-            logger.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
-                        % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time))
+            if not self.eval_per_k_steps:
+                fscore = self.periodic_model_eval()
+                # Get elapsed time
+                elapsed_time = time.time() - start_time
+                logger.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
+                            % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time))
 
             sys.stdout.flush()
             logger.handlers[0].flush()
 
-            if self.train_info['num_stuck_epochs'] >= self.max_stuck_epochs:
-                return
+    def periodic_model_eval(self):
+        # Dev performance
+        cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
+        fscore = self.evaluate_model(cluster_threshold=cluster_threshold)['fscore']
+
+        # Assume that the model didn't improve
+        self.train_info['num_stuck_evals'] += 1
+
+        # Update model if dev performance improves
+        if fscore > self.train_info['val_perf']:
+            self.train_info['num_stuck_evals'] = 0
+            self.train_info['val_perf'] = fscore
+            logger.info('Saving best model')
+            self.save_model(self.best_model_path, model_type='best')
+
+        # Save model
+        if self.to_save_model:
+            if self.dataset == 'litbank':
+                # Can train LitBank in one slurm job - Save Disk I/o time
+                if (self.train_info['epoch']) % 10 == 0:
+                    self.save_model(self.model_path)
+            else:
+                self.save_model(self.model_path)
+
+        # Go back to training mode
+        self.model.train()
+        return fscore
 
     def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1):
         """Eval model"""
@@ -298,7 +323,9 @@ class Experiment:
                 # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
                 use_conll = (cluster_threshold == self.canonical_cluster_threshold)
                 # (3) Check if the scorer and CoNLL annotation directory exist
-                path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir)
+                path_exists_bool = False
+                if self.conll_scorer is not None and self.conll_data_dir is not None:
+                    path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir)
 
                 try:
                     if final_eval and use_conll and path_exists_bool:
@@ -344,8 +371,10 @@ class Experiment:
         for key, val in self.model_args.items():
             output_dict[key] = val
 
-        for split in ['test', 'dev', 'train']:
+        # for split in ['test', 'dev', 'train']:
+        for split in ['test', 'dev']:
             if split == 'train':
+                # We had truncated the document earlier - But now we want to process the whole training document
                 self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'])
             if split not in self.data_iter_map:
                 self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
@@ -371,12 +400,15 @@ class Experiment:
         checkpoint = torch.load(location, map_location='cpu')
         self.model.load_state_dict(checkpoint['model'], strict=False)
         if model_type != 'best':
-            param_groups = ['mem', 'doc'] if self.finetune else ['mem']
-            for param_group in param_groups:
+            for param_group in checkpoint['optimizer']:
                 self.optimizer[param_group].load_state_dict(
                     checkpoint['optimizer'][param_group])
                 self.optim_scheduler[param_group].load_state_dict(
                     checkpoint['scheduler'][param_group])
+
+            if 'scaler' in checkpoint:
+                self.scaler.load_state_dict(checkpoint['scaler'])
+
         self.train_info = checkpoint['train_info']
         torch.set_rng_state(checkpoint['rng_state'])
         np.random.set_state(checkpoint['np_rng_state'])
@@ -391,6 +423,7 @@ class Experiment:
         save_dict = {
             'train_info': self.train_info,
             'model': model_state_dict,
+            'scaler': self.scaler.state_dict(),
             'rng_state': torch.get_rng_state(),
             'np_rng_state': np.random.get_state(),
             'optimizer': {},

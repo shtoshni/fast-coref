@@ -171,10 +171,9 @@ def get_document(document_lines, tokenizer, segment_len, stats):
             assert len(row) >= 12
             word_idx += 1
             word = normalize_word(row[3])
-            subtokens = tokenizer.tokenize(word)
+            subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
             document_state.tokens.append(word)
-            document_state.token_end += ([False]
-                                         * (len(subtokens) - 1)) + [True]
+            document_state.token_end += ([False] * (len(subtokens) - 1)) + [True]
             for sidx, subtoken in enumerate(subtokens):
                 document_state.subtokens.append(subtoken)
                 info = None if sidx != 0 else (row + [len(subtokens)])

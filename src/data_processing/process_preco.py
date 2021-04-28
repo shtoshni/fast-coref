@@ -29,81 +29,20 @@ class DocumentState(object):
         self.pronouns = []
         self.clusters = collections.defaultdict(list)
         self.coref_stacks = collections.defaultdict(list)
-        self.speakers = []
         self.segment_info = []
 
     def finalize(self):
-        # finalized: segments, segment_subtoken_map
-        # populate speakers from info
-        subtoken_idx = 0
-        for segment in self.segment_info:
-            speakers = []
-            for i, tok_info in enumerate(segment):
-                if tok_info is None and (i == 0 or i == len(segment) - 1):
-                    speakers.append('[SPL]')
-                elif tok_info is None:
-                    speakers.append(speakers[-1])
-                else:
-                    speakers.append(tok_info[9])
-                    if tok_info[4] == 'PRP':
-                        self.pronouns.append(subtoken_idx)
-                subtoken_idx += 1
-            self.speakers += [speakers]
-        # populate sentence map
-
-        # populate clusters
-        first_subtoken_index = -1
-        for seg_idx, segment in enumerate(self.segment_info):
-            for i, tok_info in enumerate(segment):
-                first_subtoken_index += 1
-                coref = tok_info[-2] if tok_info is not None else '-'
-                if coref != "-":
-                    last_subtoken_index = first_subtoken_index + \
-                        tok_info[-1] - 1
-                    for part in coref.split("|"):
-                        if part[0] == "(":
-                            if part[-1] == ")":
-                                cluster_id = int(part[1:-1])
-                                self.clusters[cluster_id].append(
-                                    (first_subtoken_index, last_subtoken_index))
-                            else:
-                                cluster_id = int(part[1:])
-                                self.coref_stacks[cluster_id].append(
-                                    first_subtoken_index)
-                        else:
-                            cluster_id = int(part[:-1])
-                            start = self.coref_stacks[cluster_id].pop()
-                            self.clusters[cluster_id].append(
-                                (start, last_subtoken_index))
-        # merge clusters
-        merged_clusters = []
-        for c1 in self.clusters.values():
-            existing = None
-            for m in c1:
-                for c2 in merged_clusters:
-                    if m in c2:
-                        existing = c2
-                        break
-                if existing is not None:
-                    break
-            if existing is not None:
-                print("Merging clusters (shouldn't happen very often.)")
-                existing.update(c1)
-            else:
-                merged_clusters.append(set(c1))
-        merged_clusters = [list(c) for c in merged_clusters]
-        all_mentions = flatten(merged_clusters)
+        all_mentions = flatten(self.clusters )
         sentence_map = get_sentence_map(self.segments, self.sentence_end)
         subtoken_map = flatten(self.segment_subtoken_map)
         assert len(all_mentions) == len(set(all_mentions))
         num_words = len(flatten(self.segments))
-        assert num_words == len(flatten(self.speakers))
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         assert num_words == len(sentence_map), (num_words, len(sentence_map))
         return {
             "doc_key": self.doc_key,
             "sentences": self.segments,
-            "clusters": merged_clusters,
+            "clusters": self.clusters,
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
         }
@@ -158,18 +97,42 @@ def get_sentence_map(segments, sentence_end):
 
 def get_document(instance, tokenizer, segment_len):
     document_state = DocumentState(instance["id"])
-    word_idx = -1
+    doc_word_idx = -1
 
-    for sentence in instance["sentences"]:
-        for word in sentence:
+    sentence_word_map = {}
+    for sentence_idx, sentence in enumerate(instance["sentences"]):
+        sentence_word_map[sentence_idx] = {}
+        for word_idx, word in enumerate(sentence):
+            doc_word_idx += 1
+            sentence_word_map[sentence_idx][word_idx] = [len(document_state.subtokens)]
             subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
+            # subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
+
             document_state.token_end += ([False] * (len(subtokens) - 1)) + [True]
             for sidx, subtoken in enumerate(subtokens):
                 document_state.subtokens.append(subtoken)
                 document_state.sentence_end.append(False)
-                document_state.subtoken_map.append(word_idx)
-        else:
-            document_state.sentence_end[-1] = True
+                document_state.subtoken_map.append(doc_word_idx)
+
+            sentence_word_map[sentence_idx][word_idx].append(len(document_state.subtokens))
+
+        document_state.sentence_end[-1] = True
+
+    # Map preco clusters
+    mapped_clusters = []
+    for cluster in instance["mention_clusters"]:
+        cur_cluster = []
+        for (sent_idx, word_start, word_end) in cluster:
+            # assert (sentence_word_map[sent_idx][word_start][0] < len(document_state.sentence_end))
+            span_start = sentence_word_map[sent_idx][word_start][0]
+            span_end = sentence_word_map[sent_idx][word_end - 1][1] - 1
+            tokens = tokenizer.convert_ids_to_tokens(document_state.subtokens[span_start: span_end + 1])
+            mention_str = tokenizer.convert_tokens_to_string(tokens)
+            # cur_cluster.append((span_start, span_end, mention_str))
+            cur_cluster.append((span_start, span_end))
+        mapped_clusters.append(sorted(cur_cluster, key=lambda x: x[0]))
+
+    document_state.clusters = mapped_clusters
 
     split_into_segments(document_state, segment_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
@@ -196,6 +159,7 @@ def minimize_split(seg_len, input_dir, output_dir):
     # Create cross validation output dir
 
     minimize_partition("dev", tokenizer, seg_len, input_dir, output_dir)
+    minimize_partition("test", tokenizer, seg_len, input_dir, output_dir)
     minimize_partition("train", tokenizer, seg_len, input_dir, output_dir)
 
 

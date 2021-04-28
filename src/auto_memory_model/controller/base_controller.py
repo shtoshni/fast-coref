@@ -2,42 +2,18 @@ import torch
 import torch.nn as nn
 
 from document_encoder.independent import IndependentDocEncoder
-from document_encoder.overlap import OverlapDocEncoder
 from pytorch_utils.modules import MLP
 from pytorch_utils.label_smoothing import LabelSmoothingLoss
 
 
 class BaseController(nn.Module):
-    def __init__(self,
-                 dropout_rate=0.5, max_span_width=20, top_span_ratio=0.4,
-                 ment_emb='endpoint', doc_enc='independent', mlp_size=1000,
-                 ment_loss='topk', max_ents=None, emb_size=20,
-                 label_smoothing_wt=0.0,
-                 dataset='litbank', device='cuda', use_gold_ments=False, **kwargs):
+    def __init__(self, dropout_rate=0.5, **kwargs):
         super(BaseController, self).__init__()
+        self.__dict__.update(kwargs)
 
-        self.device = device
-        self.dataset = dataset
-        self.use_gold_ments = use_gold_ments
-        # Max entities in memory
-        self.max_ents = max_ents
-
-        self.max_span_width = max_span_width
-        self.top_span_ratio = top_span_ratio
-
-        self.ment_loss = ment_loss
-        self.label_smoothing_wt = label_smoothing_wt
-
-        if doc_enc == 'independent':
-            self.doc_encoder = IndependentDocEncoder(device=self.device, **kwargs)
-        else:
-            self.doc_encoder = OverlapDocEncoder(device=self.device, **kwargs)
-
+        self.doc_encoder = IndependentDocEncoder(**kwargs)
         self.hsize = self.doc_encoder.hsize
-        self.mlp_size = mlp_size
-        self.emb_size = emb_size
         self.drop_module = nn.Dropout(p=dropout_rate)
-        self.ment_emb = ment_emb
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 
         if self.dataset == 'ontonotes':
@@ -48,6 +24,8 @@ class BaseController(nn.Module):
                 self.genre_to_idx[genre] = idx
 
             self.genre_embeddings = nn.Embedding(len(self.genre_list), self.emb_size)
+        # else:
+        #     self.genre_embeddings = nn.Embedding(1, self.emb_size)
 
         if self.ment_emb == 'attn':
             self.mention_attn = nn.Linear(self.hsize, 1)
@@ -116,7 +94,8 @@ class BaseController(nn.Module):
     def get_gold_mentions(self, clusters, num_words, flat_cand_mask):
         gold_ments = torch.zeros(num_words, self.max_span_width, device=self.device)
         for cluster_idx, cluster in enumerate(clusters):
-            for (span_start, span_end) in cluster:
+            for mention in cluster:
+                span_start, span_end = mention[:2]
                 span_width = span_end - span_start + 1
                 if span_width <= self.max_span_width:
                     span_width_idx = span_width - 1
@@ -128,6 +107,8 @@ class BaseController(nn.Module):
 
     def get_candidate_endpoints(self, encoded_doc, example):
         num_words = encoded_doc.shape[0]
+        # print(num_words)
+        # print(example["doc_key"], example["sent_len_list"])
 
         sent_map = example["sentence_map"].to(self.device)
         # num_words x max_span_width
@@ -151,7 +132,6 @@ class BaseController(nn.Module):
         return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
     def get_pred_mentions(self, example, encoded_doc, topk=False):
-        # num_words = (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1)
         num_words = encoded_doc.shape[0]
 
         filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
@@ -162,9 +142,9 @@ class BaseController(nn.Module):
         # Span embeddings not needed anymore
         mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
 
-        k = int(self.top_span_ratio * num_words)
         train_vars = {}
         if self.training:
+            k = int(self.top_span_ratio * (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1))
             topk_indices = torch.topk(mention_logits, k)[1]
             filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
             # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
@@ -182,6 +162,7 @@ class BaseController(nn.Module):
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
         else:
             if topk:
+                k = int(self.top_span_ratio * (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1))
                 topk_indices = torch.topk(mention_logits, k)[1]
             else:
                 topk_indices = torch.squeeze((mention_logits >= 0.0).nonzero(as_tuple=False), dim=1)
@@ -204,7 +185,10 @@ class BaseController(nn.Module):
         else:
             mentions = []
             for cluster in example["clusters"]:
-                mentions.extend(cluster)
+                for mention in cluster:
+                    ment_start, ment_end = mention[:2]
+                    mentions.append((ment_start, ment_end))
+
             pred_starts, pred_ends = zip(*mentions)
             pred_starts = torch.tensor(pred_starts, device=self.device)
             pred_ends = torch.tensor(pred_ends, device=self.device)

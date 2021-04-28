@@ -14,10 +14,11 @@ class BaseMemory(nn.Module):
         self.device = device
 
         self.dataset = dataset
-        if self.dataset == 'litbank':
-            self.num_feats = 2
-        elif self.dataset == 'ontonotes':
+        if self.dataset == 'ontonotes':
             self.num_feats = 3
+        else:
+            self.num_feats = 2
+        # self.num_feats = 3
 
         self.max_ents = max_ents
 

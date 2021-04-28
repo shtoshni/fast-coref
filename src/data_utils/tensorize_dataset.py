@@ -20,19 +20,26 @@ class TensorizeDataset:
 
         return tensorized_data
 
+    def process_sentence(self, sentence):
+        if isinstance(sentence[0], int):
+            proc_sentence = sentence
+        else:
+            proc_sentence = self.tokenizer.convert_tokens_to_ids(sentence)
+
+        return [self.tokenizer.cls_token_id] + proc_sentence + [self.tokenizer.sep_token_id]
+
     def tensorize_instance_independent(self, instance, training=False):
         sentences = instance["sentences"]
         clusters = instance["clusters"]
         sentence_map = instance["sentence_map"]
         subtoken_map = instance["subtoken_map"]
 
-        sentences = [([self.tokenizer.cls_token] + sent + [self.tokenizer.sep_token]) for sent in sentences]
-
         if training:
             if len(sentences) > 1:
                 # Truncate to prefix - happens rarely for segment length of 4096
+                # For segments <= 2048 it does happen
                 sentences = sentences[:1]
-                num_words = len(sentences[0]) - 2  # Remove special tokens
+                num_words = len(sentences[0])
                 sentence_map = sentence_map[:num_words]
                 subtoken_map = subtoken_map[:num_words]
                 clusters = []
@@ -46,15 +53,15 @@ class TensorizeDataset:
                         clusters.append(cluster)
 
             padded_sent = torch.unsqueeze(
-                torch.tensor(self.tokenizer.convert_tokens_to_ids(sentences[0]), device=self.device), dim=0)
-            sent_len_list = [len(sent) for sent in sentences]
+                torch.tensor(self.process_sentence(sentences[0]), device=self.device), dim=0)
+
         else:
             # Streaming inference
-            sent_len_list = [len(sent) for sent in sentences]
             padded_sent = [
-                torch.unsqueeze(torch.tensor(self.tokenizer.convert_tokens_to_ids(sent), device=self.device), dim=0)
+                torch.unsqueeze(torch.tensor(self.process_sentence(sent), device=self.device), dim=0)
                 for sent in sentences]
 
+        sent_len_list = [len(sent) for sent in sentences]
         output_dict = {"padded_sent": padded_sent,
                        "sentences": sentences,
                        "sent_len_list": sent_len_list,

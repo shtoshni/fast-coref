@@ -65,13 +65,17 @@ class ControllerPredInvalid(BaseController):
         metadata = {}
         if self.dataset == 'ontonotes':
             metadata = {'genre': self.get_genre_embedding(instance)}
-        coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
-        loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss']}
 
-        if len(coref_new_list) > 0:
-            coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
-            loss['total'] += coref_loss
-            loss['coref'] = coref_loss
+        coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
+        if 'mention_loss' in train_vars:
+            loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss']}
+
+            if len(coref_new_list) > 0:
+                coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
+                loss['total'] += coref_loss
+                loss['coref'] = coref_loss
+        else:
+            loss = {'total': None}
 
         return loss
 
@@ -81,19 +85,34 @@ class ControllerPredInvalid(BaseController):
             metadata = {'genre': self.get_genre_embedding(instance)}
 
         action_list, pred_mentions_list, gt_actions = [], [], []
-        last_memory, word_offset = None, 0
+        last_memory, token_offset = None, 0
 
         for idx in range(0, len(instance["sentences"])):
-            num_words = len(instance["sentences"][idx]) - 2
+            num_tokens = len(instance["sentences"][idx])
+
+            clusters = []
+            for orig_cluster in instance["clusters"]:
+                cluster = []
+                for mention in orig_cluster:
+                    ment_start, ment_end = mention[:2]
+                    if ment_start >= token_offset and ment_end < (token_offset + num_tokens):
+                        cluster.append((ment_start, ment_end))
+
+                if len(cluster):
+                    clusters.append(cluster)
+
             cur_example = {
                 "padded_sent": instance["padded_sent"][idx],
-                "sentence_map": instance["sentence_map"][word_offset: word_offset + num_words],
+                "sentence_map": instance["sentence_map"][token_offset: token_offset + num_tokens],
+                "subtoken_map": instance["subtoken_map"][token_offset: token_offset + num_tokens],
                 "sent_len_list": [instance["sent_len_list"][idx]],
+                "clusters": clusters,
             }
 
             cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
-            cur_pred_mentions = cur_pred_mentions + word_offset
-            word_offset += num_words
+            cur_pred_mentions = cur_pred_mentions + token_offset
+            token_offset += num_tokens
+
             cur_pred_mentions_list = cur_pred_mentions.tolist()
             pred_mentions_list.extend(cur_pred_mentions_list)
 

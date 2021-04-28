@@ -40,7 +40,7 @@ class IndependentDocEncoder(BaseDocEncoder):
         unpadded_encoded_output = []
         for idx, sent_len in enumerate(sent_len_list):
             unpadded_encoded_output.append(
-                encoded_repr[idx, 1:sent_len-1, :])
+                encoded_repr[idx, 1:sent_len+1, :])
 
         encoded_output = torch.cat(unpadded_encoded_output, dim=0)
         encoded_output = encoded_output

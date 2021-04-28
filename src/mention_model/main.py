@@ -20,7 +20,7 @@ def main():
     parser.add_argument(
         '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
     parser.add_argument(
-        '-dataset', default='litbank', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='litbank', choices=['litbank', 'ontonotes', 'preco'], type=str)
     parser.add_argument('-base_model_dir',
                         default='../models', help='Root folder storing model runs', type=str)
     parser.add_argument('-model_dir', default=None, help='Model directory', type=str)

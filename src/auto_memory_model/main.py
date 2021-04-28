@@ -6,7 +6,6 @@ import logging
 from collections import OrderedDict
 
 from auto_memory_model.experiment import Experiment
-from mention_model.utils import get_mention_model_name
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -29,7 +28,7 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='ontonotes', choices=['litbank', 'ontonotes'], type=str)
+        '-dataset', default='ontonotes', choices=['litbank', 'ontonotes', 'preco'], type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -80,7 +79,7 @@ def main():
                         help='Dropout rate')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
-    parser.add_argument('-ment_loss', default='all', type=str, choices=['all', 'topk'],
+    parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
                         help='Mention loss computed over topk or all mentions.')
     parser.add_argument('-max_epochs',
                         help='Maximum number of epochs', default=25, type=int)
@@ -94,6 +93,7 @@ def main():
                         default=None, type=float)
     parser.add_argument('-train_with_singletons', help="Train on singletons.",
                         default=False, action="store_true")
+    parser.add_argument('-eval_per_k_steps', default=0, type=int, help='Evaluate on dev set per k steps')
     parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
                         default=True, action="store_false")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
@@ -103,7 +103,7 @@ def main():
 
     args = parser.parse_args()
 
-    if args.dataset == 'litbank':
+    if args.dataset in ['litbank', 'preco']:
         args.train_with_singletons = True
 
     # Get model directory name
@@ -116,9 +116,6 @@ def main():
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
                 'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
                 ]
-
-    if args.cluster_mlp_size != parser.get_default('cluster_mlp_size'):
-        imp_opts.append('cluster_mlp_size')
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
         imp_opts.append('singleton_file')
@@ -179,17 +176,17 @@ def main():
                 enc_str = ""
             args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
             args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
+        else:
+            args.conll_data_dir = None
     else:
+        base_dir = path.dirname(args.data_dir.rstrip("/"))
         if args.dataset == 'litbank':
             args.data_dir = path.join(args.data_dir, f'{args.cross_val_split}')
+            args.conll_data_dir = path.join(base_dir, f'conll/{args.cross_val_split}')
         elif args.dataset == 'ontonotes':
-            args.conll_data_dir = path.join(path.dirname(args.data_dir.rstrip("/")), "conll")
-
-    base_data_dir = path.dirname(path.dirname(args.data_dir))
-    if args.dataset == 'litbank':
-        args.conll_data_dir = path.join(base_data_dir, f'litbank/conll/{args.cross_val_split}')
-    else:
-        args.conll_data_dir = path.join(base_data_dir, f'ontonotes/conll')
+            args.conll_data_dir = path.join(base_dir, "conll")
+        else:
+            args.conll_data_dir = None
 
     print(args.data_dir)
     print(args.conll_data_dir)
