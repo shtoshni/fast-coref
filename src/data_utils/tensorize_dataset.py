@@ -4,13 +4,9 @@ from transformers import LongformerTokenizerFast
 
 
 class TensorizeDataset:
-    def __init__(self, doc_enc, device=None):
-        self.doc_enc = doc_enc
+    def __init__(self):
         self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096')
-        if device is None:
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = device
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def tensorize_data(self, split_data, training=False):
         tensorized_data = []
@@ -52,17 +48,17 @@ class TensorizeDataset:
                     if len(cluster):
                         clusters.append(cluster)
 
-            padded_sent = torch.unsqueeze(
+            tensorized_sent = torch.unsqueeze(
                 torch.tensor(self.process_sentence(sentences[0]), device=self.device), dim=0)
 
         else:
             # Streaming inference
-            padded_sent = [
+            tensorized_sent = [
                 torch.unsqueeze(torch.tensor(self.process_sentence(sent), device=self.device), dim=0)
                 for sent in sentences]
 
         sent_len_list = [len(sent) for sent in sentences]
-        output_dict = {"padded_sent": padded_sent,
+        output_dict = {"tensorized_sent": tensorized_sent,
                        "sentences": sentences,
                        "sent_len_list": sent_len_list,
                        "doc_key": instance["doc_key"],

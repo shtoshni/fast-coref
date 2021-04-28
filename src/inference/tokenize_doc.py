@@ -16,7 +16,7 @@ class DocumentState(object):
         self.segment_subtoken_map = []
         self.sentence_map = []
         self.part_lens = []
-        self.padded_sent = []
+        self.tensorized_sent = []
         self.sent_len_list = []
 
     def finalize(self):
@@ -29,7 +29,7 @@ class DocumentState(object):
             "sentences": self.segments,
             "sentences_indices": self.segments_indices,
             "sent_len_list": self.sent_len_list,
-            "padded_sent": self.padded_sent,
+            "tensorized_sent": self.tensorized_sent,
             "start_indices": self.start_indices,
             "end_indices": self.end_indices,
             'sentence_map': torch.tensor([0] * num_words),  # Assume no sentence boundaries are specified
@@ -117,9 +117,9 @@ def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=4
     document_state.segments_indices = sentences
 
     # Tensorize sentence - Streaming is done one window at a time, so no padding required
-    padded_sent = [torch.unsqueeze(
+    tensorized_sent = [torch.unsqueeze(
         torch.tensor([lm_tokenizer.cls_token_id] + sent + [lm_tokenizer.sep_token_id]), dim=0) for sent in sentences]
-    document_state.padded_sent = padded_sent
+    document_state.tensorized_sent = tensorized_sent
     return document_state.finalize()
 
 

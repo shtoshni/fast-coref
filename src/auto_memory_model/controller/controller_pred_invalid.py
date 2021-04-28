@@ -102,7 +102,7 @@ class ControllerPredInvalid(BaseController):
                     clusters.append(cluster)
 
             cur_example = {
-                "padded_sent": instance["padded_sent"][idx],
+                "tensorized_sent": instance["tensorized_sent"][idx],
                 "sentence_map": instance["sentence_map"][token_offset: token_offset + num_tokens],
                 "subtoken_map": instance["subtoken_map"][token_offset: token_offset + num_tokens],
                 "sent_len_list": [instance["sent_len_list"][idx]],

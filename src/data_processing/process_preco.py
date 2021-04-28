@@ -127,7 +127,7 @@ def get_document(instance, tokenizer, segment_len):
             span_start = sentence_word_map[sent_idx][word_start][0]
             span_end = sentence_word_map[sent_idx][word_end - 1][1] - 1
             tokens = tokenizer.convert_ids_to_tokens(document_state.subtokens[span_start: span_end + 1])
-            mention_str = tokenizer.convert_tokens_to_string(tokens)
+            # mention_str = tokenizer.convert_tokens_to_string(tokens)
             # cur_cluster.append((span_start, span_end, mention_str))
             cur_cluster.append((span_start, span_end))
         mapped_clusters.append(sorted(cur_cluster, key=lambda x: x[0]))

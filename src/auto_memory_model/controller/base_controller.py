@@ -185,8 +185,7 @@ class BaseController(nn.Module):
         else:
             mentions = []
             for cluster in example["clusters"]:
-                for mention in cluster:
-                    ment_start, ment_end = mention[:2]
+                for ment_start, ment_end in cluster:
                     mentions.append((ment_start, ment_end))
 
             pred_starts, pred_ends = zip(*mentions)

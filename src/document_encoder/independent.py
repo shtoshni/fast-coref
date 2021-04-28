@@ -16,7 +16,7 @@ class IndependentDocEncoder(BaseDocEncoder):
         batch_excerpt: C x L where C is number of chunks padded upto max length of L
         text_length_list: list of length of chunks (length C)
         """
-        doc_tens = instance["padded_sent"]
+        doc_tens = instance["tensorized_sent"]
         if isinstance(doc_tens, list):
             doc_tens = torch.tensor(doc_tens, device=self.device)
         else:

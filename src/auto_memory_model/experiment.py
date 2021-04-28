@@ -39,11 +39,11 @@ class Experiment:
             self.canonical_cluster_threshold = 2
         elif self.dataset == 'preco':
             # OntoNotes
-            self.update_frequency = 500
+            self.update_frequency = 100
             self.canonical_cluster_threshold = 1
 
         self.orig_data_map = self.load_data()
-        self.data_processor = TensorizeDataset(self.doc_enc)
+        self.data_processor = TensorizeDataset()
         self.data_iter_map = {}
 
         self.model = None
@@ -93,7 +93,7 @@ class Experiment:
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
         self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
-        self.model.load_state_dict(checkpoint['model'], strict=False)
+        self.model.load_state_dict(checkpoint['model'], strict=True)
         print(checkpoint['model_args'])
         # Finally evaluate model
         if self.eval_max_ents is not None:
@@ -148,12 +148,12 @@ class Experiment:
             return
 
         model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
+        # Setup training
+        model.train()
 
         for epoch in range(self.train_info['epoch'], self.max_epochs):
             logger.info("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
-            # Setup training
-            model.train()
 
             train_data = self.data_iter_map['train']
             np.random.shuffle(train_data)
@@ -293,11 +293,13 @@ class Experiment:
 
                     log_example = dict(example)
                     log_example["pred_mentions"] = pred_mentions
-                    log_example["raw_predicted_clusters"] = raw_predicted_clusters
+                    if cluster_threshold != 1:
+                        # For cluster threshold 1, raw and processed clusters are one and the same
+                        log_example["raw_predicted_clusters"] = raw_predicted_clusters
                     log_example["pred_actions"] = action_list
                     log_example["predicted_clusters"] = predicted_clusters
 
-                    del log_example["padded_sent"]
+                    del log_example["tensorized_sent"]
                     for key in list(log_example.keys()):
                         if isinstance(log_example[key], torch.Tensor):
                             del log_example[key]
