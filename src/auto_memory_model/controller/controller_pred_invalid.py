@@ -20,7 +20,7 @@ class ControllerPredInvalid(BaseController):
         self.memory_net = MemoryPredInvalid(
             mem_type=mem_type, max_ents=self.max_ents,
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
-            drop_module=self.drop_module, **kwargs)
+            drop_module=self.drop_module, num_feats=self.num_feats, **kwargs)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
@@ -62,9 +62,7 @@ class ControllerPredInvalid(BaseController):
         pred_mentions_list = pred_mentions.tolist()
         gt_actions = self.get_actions(pred_mentions_list, instance)
 
-        metadata = {}
-        if self.dataset == 'ontonotes':
-            metadata = {'genre': self.get_genre_embedding(instance)}
+        metadata = self.get_metadata(instance)
 
         coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
         if 'mention_loss' in train_vars:
@@ -80,9 +78,7 @@ class ControllerPredInvalid(BaseController):
         return loss
 
     def forward(self, instance, teacher_forcing=False):
-        metadata = {}
-        if self.dataset == 'ontonotes':
-            metadata = {'genre': self.get_genre_embedding(instance)}
+        metadata = self.get_metadata(instance)
 
         action_list, pred_mentions_list, gt_actions = [], [], []
         last_memory, token_offset = None, 0

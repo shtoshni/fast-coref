@@ -29,17 +29,14 @@ class Experiment:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.cluster_threshold = 1 if self.train_with_singletons else 2
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.canonical_cluster_threshold = 1
         elif self.dataset == 'ontonotes':
             # OntoNotes
-            self.update_frequency = 500
             self.canonical_cluster_threshold = 2
         elif self.dataset == 'preco':
             # OntoNotes
-            self.update_frequency = 100
             self.canonical_cluster_threshold = 1
 
         self.orig_data_map = self.load_data()
@@ -220,8 +217,7 @@ class Experiment:
 
     def periodic_model_eval(self):
         # Dev performance
-        cluster_threshold = max(self.cluster_threshold, self.canonical_cluster_threshold)
-        fscore = self.evaluate_model(cluster_threshold=cluster_threshold)['fscore']
+        fscore = self.evaluate_model(cluster_threshold=self.canonical_cluster_threshold)['fscore']
 
         # Assume that the model didn't improve
         self.train_info['num_stuck_evals'] += 1

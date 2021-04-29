@@ -7,44 +7,25 @@ LOG2 = math.log(2)
 
 
 class BaseMemory(nn.Module):
-    def __init__(self, hsize=300, mlp_size=200, cluster_mlp_size=200,  mlp_depth=1, drop_module=None,
-                 emb_size=20, entity_rep='max', dataset='litbank', sim_func='hadamard',
-                 device="cuda", max_ents=None, **kwargs):
+    def __init__(self, cluster_mlp_size=200,  drop_module=None, **kwargs):
         super(BaseMemory, self).__init__()
-        self.device = device
+        self.__dict__.update(kwargs)
 
-        self.dataset = dataset
-        if self.dataset == 'ontonotes':
-            self.num_feats = 3
-        else:
-            self.num_feats = 2
-        # self.num_feats = 3
-
-        self.max_ents = max_ents
-
-        self.sim_func = sim_func
-        self.hsize = hsize
-        self.mem_size = hsize
-        self.mlp_size = mlp_size
-        self.mlp_depth = mlp_depth
-        self.emb_size = emb_size
-        self.entity_rep = entity_rep
-
+        self.mem_size = self.hsize
         self.new_ent_score = 0.0
-
         self.drop_module = drop_module
 
         if self.sim_func == 'endpoint':
             self.mem_coref_mlp = MLP(2 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
-                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+                                     num_hidden_layers=self.mlp_depth, bias=True, drop_module=drop_module)
         elif self.sim_func == 'cosine':
             self.cosine_sim_fn = nn.CosineSimilarity(dim=1, eps=1e-6)
             self.mem_coref_mlp = MLP(self.num_feats * self.emb_size, cluster_mlp_size, 1,
-                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+                                     num_hidden_layers=self.mlp_depth, bias=True, drop_module=drop_module)
         else:
             # Default 'hadamard' + endpoints; used in SNLI by Bowman
             self.mem_coref_mlp = MLP(3 * self.mem_size + self.num_feats * self.emb_size, cluster_mlp_size, 1,
-                                     num_hidden_layers=mlp_depth, bias=True, drop_module=drop_module)
+                                     num_hidden_layers=self.mlp_depth, bias=True, drop_module=drop_module)
 
         if self.entity_rep == 'learned_avg':
             self.alpha = MLP(2 * self.mem_size, 300, 1, num_hidden_layers=1, bias=True, drop_module=drop_module)

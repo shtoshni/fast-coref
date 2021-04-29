@@ -16,19 +16,23 @@ class BaseController(nn.Module):
         self.drop_module = nn.Dropout(p=dropout_rate)
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 
-        if self.dataset == 'ontonotes':
-            # Ontonotes - Genre embedding
-            self.genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
-            self.genre_to_idx = dict()
-            for idx, genre in enumerate(self.genre_list):
-                self.genre_to_idx[genre] = idx
-
-            self.genre_embeddings = nn.Embedding(len(self.genre_list), self.emb_size)
-        # else:
-        #     self.genre_embeddings = nn.Embedding(1, self.emb_size)
-
         if self.ment_emb == 'attn':
             self.mention_attn = nn.Linear(self.hsize, 1)
+
+        self.num_feats = 2
+        self.doc_class_to_idx = {}
+        if self.dataset == 'ontonotes':
+            if self.doc_class is not None:
+                self.num_feats = 3
+                # Ontonotes - Genre embedding
+                if self.doc_class == 'dialog':
+                    self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
+                    self.genre_embeddings = nn.Embedding(2, self.emb_size)
+                else:
+                    genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+                    for idx, genre in enumerate(genre_list):
+                        self.doc_class_to_idx[genre] = idx
+                    self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size)
 
         # Mention modeling part
         self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
@@ -105,12 +109,9 @@ class BaseController(nn.Module):
         # assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
         return filt_gold_ments
 
-    def get_candidate_endpoints(self, encoded_doc, example):
+    def get_candidate_endpoints(self, encoded_doc, instance):
         num_words = encoded_doc.shape[0]
-        # print(num_words)
-        # print(example["doc_key"], example["sent_len_list"])
-
-        sent_map = example["sentence_map"].to(self.device)
+        sent_map = instance["sentence_map"].to(self.device)
         # num_words x max_span_width
         cand_starts = torch.unsqueeze(torch.arange(num_words, device=self.device), dim=1).repeat(1, self.max_span_width)
         cand_ends = cand_starts + torch.unsqueeze(torch.arange(self.max_span_width, device=self.device), dim=0)
@@ -131,10 +132,10 @@ class BaseController(nn.Module):
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-    def get_pred_mentions(self, example, encoded_doc, topk=False):
+    def get_pred_mentions(self, instance, encoded_doc, topk=False):
         num_words = encoded_doc.shape[0]
 
-        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, example)
+        filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, instance)
 
         span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
 
@@ -144,9 +145,9 @@ class BaseController(nn.Module):
 
         train_vars = {}
         if self.training:
-            k = int(self.top_span_ratio * (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1))
+            k = int(self.top_span_ratio * (instance["subtoken_map"][-1] - instance["subtoken_map"][0] + 1))
             topk_indices = torch.topk(mention_logits, k)[1]
-            filt_gold_mentions = self.get_gold_mentions(example["clusters"], num_words, flat_cand_mask)
+            filt_gold_mentions = self.get_gold_mentions(instance["clusters"], num_words, flat_cand_mask)
             # mention_loss = self.mention_loss_fn(mention_logits, filt_gold_mentions)
             if self.ment_loss == 'all':
                 mention_loss = self.mention_loss_fn(mention_logits, torch.clamp(filt_gold_mentions, 0, 1))
@@ -162,7 +163,7 @@ class BaseController(nn.Module):
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
         else:
             if topk:
-                k = int(self.top_span_ratio * (example["subtoken_map"][-1] - example["subtoken_map"][0] + 1))
+                k = int(self.top_span_ratio * (instance["subtoken_map"][-1] - instance["subtoken_map"][0] + 1))
                 topk_indices = torch.topk(mention_logits, k)[1]
             else:
                 topk_indices = torch.squeeze((mention_logits >= 0.0).nonzero(as_tuple=False), dim=1)
@@ -177,14 +178,14 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], train_vars
 
-    def get_mention_embs(self, example, topk=False):
-        encoded_doc = self.doc_encoder(example)
+    def get_mention_embs(self, instance, topk=False):
+        encoded_doc = self.doc_encoder(instance)
         train_vars = None
         if not self.use_gold_ments:
-            pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(example, encoded_doc, topk=topk)
+            pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(instance, encoded_doc, topk=topk)
         else:
             mentions = []
-            for cluster in example["clusters"]:
+            for cluster in instance["clusters"]:
                 for ment_start, ment_end in cluster:
                     mentions.append((ment_start, ment_end))
 
@@ -231,13 +232,13 @@ class BaseController(nn.Module):
 
         return coref_loss
 
-    def get_genre_embedding(self, examples):
-        genre = examples["doc_key"][:2]
-        if genre in self.genre_to_idx:
-            genre_idx = self.genre_to_idx[genre]
+    def get_metadata(self, instance):
+        doc_class = instance["doc_key"][:2]
+        if doc_class in self.doc_class_to_idx:
+            doc_class_idx = self.doc_class_to_idx[doc_class]
+            return {'genre': self.genre_embeddings(torch.tensor(doc_class_idx, device=self.device))}
         else:
-            genre_idx = self.genre_to_idx['nw']
-        return self.genre_embeddings(torch.tensor(genre_idx, device=self.device))
+            return {}
 
-    def forward(self, example, teacher_forcing=False):
+    def forward(self, instance, teacher_forcing=False):
         pass

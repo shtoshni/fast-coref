@@ -34,16 +34,14 @@ def main():
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model_size', default='large', type=str, help='Model size')
-    parser.add_argument('-doc_enc', default='independent', type=str,
-                        choices=['independent', 'overlap'], help='Windowing mechanism')
-    parser.add_argument('-max_segment_len', default=4096, type=int,
+    parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of windowed inputs.')
 
     # Mention variables
     parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
     parser.add_argument('-ment_emb', default='attn', choices=['attn', 'endpoint'], type=str)
     parser.add_argument('-use_gold_ments', default=False, action="store_true")
-    parser.add_argument('-top_span_ratio', default=0.3, type=float,
+    parser.add_argument('-top_span_ratio', default=0.4, type=float,
                         help='Ratio of top spans proposed as mentions.')
 
     # Memory variables
@@ -67,6 +65,9 @@ def main():
                         help="Number of maximum entities in memory.")
     parser.add_argument('-eval_max_ents', default=None, type=int,
                         help="Number of maximum entities in memory during inference.")
+    # Dataset-specific features
+    parser.add_argument('-doc_class', default=None, choices=['dialog', 'genre'],
+                        help='What information of document class to use.')
 
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
@@ -90,10 +91,9 @@ def main():
     parser.add_argument('-init_lr', help="Initial learning rate",
                         default=3e-4, type=float)
     parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
-                        default=None, type=float)
-    parser.add_argument('-train_with_singletons', help="Train on singletons.",
-                        default=False, action="store_true")
+                        default=1e-5, type=float)
     parser.add_argument('-eval_per_k_steps', default=0, type=int, help='Evaluate on dev set per k steps')
+    parser.add_argument('-update_frequency', default=500, type=int, help='Update freq')
     parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
                         default=True, action="store_false")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
@@ -103,47 +103,36 @@ def main():
 
     args = parser.parse_args()
 
-    if args.dataset in ['litbank', 'preco']:
-        args.train_with_singletons = True
-
     # Get model directory name
     opt_dict = OrderedDict()
     # Only include important options in hash computation
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
-                'ment_emb', "doc_enc", 'max_span_width', 'top_span_ratio',  # Mention model
+                'ment_emb', 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
                 'dropout_rate', 'seed', 'init_lr', 'max_epochs',
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
-                'num_train_docs', 'train_with_singletons',  'dataset',  # Dataset params
-                ]
+                'num_train_docs', 'sim_func', 'fine_tune_lr', 'doc_class']
+
+    changed_opts = OrderedDict()
+    dict_args = vars(args)
+    for attr in imp_opts:
+        if dict_args[attr] != parser.get_default(attr):
+            changed_opts[attr] = dict_args[attr]
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
-        imp_opts.append('singleton_file')
-
-    if args.fine_tune_lr is not None:
-        imp_opts.append('fine_tune_lr')
-
-    if args.sim_func is not parser.get_default('sim_func'):
-        imp_opts.append('sim_func')
-
-    # Adding conditional important options
-    if args.mem_type in ['learned', 'lru']:
-        # Number of max entities only matters for bounded memory models
-        imp_opts.append('max_ents')
-    else:
-        args.max_ents = None
+        changed_opts['singleton'] = path.basename(args.singleton_file)
 
     if args.dataset == 'litbank':
         # Cross-validation split is only important for litbank
-        imp_opts.append('cross_val_split')
+        changed_opts['cross_val_split'] = args.cross_val_split
 
     for key, val in vars(args).items():
-        if key in imp_opts:
+        if key in changed_opts:
             opt_dict[key] = val
 
-    str_repr = str(opt_dict.items())
-    hash_idx = hashlib.md5(str_repr.encode("utf-8")).hexdigest()
-    model_name = f"longformer_{args.dataset}_" + str(hash_idx)
+    key_val_pairs = sorted(opt_dict.items())
+    str_repr = '_'.join([f'{key}_{val}' for key, val in key_val_pairs])
+    model_name = f"longformer_{args.dataset}_" + str_repr
 
     if args.eval_model:
         args.max_training_segments = None
@@ -167,14 +156,10 @@ def main():
 
     if args.data_dir is None:
         if args.dataset == 'litbank':
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}/{args.cross_val_split}')
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/independent/{args.cross_val_split}')
             args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
         elif args.dataset == 'ontonotes':
-            if args.train_with_singletons:
-                enc_str = "_singletons"
-            else:
-                enc_str = ""
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/{args.doc_enc}{enc_str}')
+            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/independent')
             args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
         else:
             args.conll_data_dir = None
