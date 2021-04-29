@@ -104,13 +104,9 @@ class DocumentState(object):
         return {
             "doc_key": self.doc_key,
             "sentences": self.segments,
-            # "speakers": self.speakers,
-            # "constituents": [],
-            # "ner": [],
             "clusters": merged_clusters,
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
-            # 'pronouns': self.pronouns
         }
 
 
@@ -173,7 +169,7 @@ def get_document(document_lines, tokenizer, segment_len):
                 row.append('-')
             word_idx += 1
             word = normalize_word(row[3])
-            subtokens = tokenizer.tokenize(word)
+            subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
             document_state.tokens.append(word)
             document_state.token_end += ([False]
                                          * (len(subtokens) - 1)) + [True]
@@ -247,7 +243,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
     for cross_val_split in range(10):
         # for seg_len in [128, 256, 384, 512]:
-        for seg_len in [1024, 1536, 2048, 4096]:
+        for seg_len in [2048, 4096]:
             labels = collections.defaultdict(set)
             stats = collections.defaultdict(int)
             minimize_split(labels, stats, cross_val_split,

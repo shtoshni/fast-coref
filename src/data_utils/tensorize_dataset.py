@@ -6,7 +6,8 @@ from transformers import LongformerTokenizerFast
 class TensorizeDataset:
     def __init__(self):
         self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096')
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
 
     def tensorize_data(self, split_data, training=False):
         tensorized_data = []
@@ -17,12 +18,7 @@ class TensorizeDataset:
         return tensorized_data
 
     def process_sentence(self, sentence):
-        if isinstance(sentence[0], int):
-            proc_sentence = sentence
-        else:
-            proc_sentence = self.tokenizer.convert_tokens_to_ids(sentence)
-
-        return [self.tokenizer.cls_token_id] + proc_sentence + [self.tokenizer.sep_token_id]
+        return [self.tokenizer.cls_token_id] + sentence + [self.tokenizer.sep_token_id]
 
     def tensorize_instance_independent(self, instance, training=False):
         sentences = instance["sentences"]

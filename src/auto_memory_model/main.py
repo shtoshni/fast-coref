@@ -189,12 +189,6 @@ def main():
             args.conll_data_dir = None
 
     print(args.data_dir)
-    print(args.conll_data_dir)
-
-    # Get mention model name
-    # args.pretrained_mention_model = path.join(
-    #     path.join(args.base_model_dir, get_mention_model_name(args)), "best_models/model.pth")
-    # print(args.pretrained_mention_model)
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")
@@ -211,6 +205,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # import torch
-    # torch.multiprocessing.set_start_method('spawn')
     main()
