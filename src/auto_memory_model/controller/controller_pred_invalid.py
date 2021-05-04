@@ -92,7 +92,7 @@ class ControllerPredInvalid(BaseController):
                 for mention in orig_cluster:
                     ment_start, ment_end = mention[:2]
                     if ment_start >= token_offset and ment_end < (token_offset + num_tokens):
-                        cluster.append((ment_start, ment_end))
+                        cluster.append((ment_start - token_offset, ment_end - token_offset))
 
                 if len(cluster):
                     clusters.append(cluster)

@@ -67,8 +67,7 @@ class BaseController(nn.Module):
     def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
         span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
         # Add span width embeddings
-        span_width_indices = torch.clamp(ment_ends - ment_starts, max=self.max_span_width)
-        # print(span_width_indices)
+        span_width_indices = torch.clamp(ment_ends - ment_starts, max=self.max_span_width - 1)
         span_width_embs = self.drop_module(self.span_width_embeddings(span_width_indices))
         span_emb_list.append(span_width_embs)
 
@@ -89,7 +88,7 @@ class BaseController(nn.Module):
         return torch.cat(span_emb_list, dim=1)
 
     def get_mention_width_scores(self, cand_starts, cand_ends):
-        span_width_idx = cand_ends - cand_starts
+        span_width_idx = torch.clamp(cand_ends - cand_starts, max=self.max_span_width - 1)
         span_width_embs = self.span_width_prior_embeddings(span_width_idx)
         width_scores = torch.squeeze(self.span_width_mlp(span_width_embs), dim=-1)
 
@@ -189,16 +188,21 @@ class BaseController(nn.Module):
                 for ment_start, ment_end in cluster:
                     mentions.append((ment_start, ment_end))
 
-            pred_starts, pred_ends = zip(*mentions)
-            pred_starts = torch.tensor(pred_starts, device=self.device)
-            pred_ends = torch.tensor(pred_ends, device=self.device)
+            topk_starts, topk_ends = zip(*mentions)
+            topk_starts = torch.tensor(topk_starts, device=self.device)
+            topk_ends = torch.tensor(topk_ends, device=self.device)
             # Fake positive score
             pred_scores = torch.tensor([1.0] * len(mentions), device=self.device)
 
+            sort_scores = topk_starts + 1e-5 * topk_ends
+            _, sorted_indices = torch.sort(sort_scores, 0)
+
+            pred_starts, pred_ends = topk_starts[sorted_indices], topk_ends[sorted_indices]
+
         # Sort the predicted mentions
         pred_mentions = torch.stack((pred_starts, pred_ends), dim=1)
-        mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 
+        mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
         mention_emb_list = torch.unbind(mention_embs, dim=0)
 
         return pred_mentions, mention_emb_list, pred_scores, train_vars
@@ -233,9 +237,12 @@ class BaseController(nn.Module):
         return coref_loss
 
     def get_metadata(self, instance):
-        doc_class = instance["doc_key"][:2]
-        if doc_class in self.doc_class_to_idx:
-            doc_class_idx = self.doc_class_to_idx[doc_class]
+        if self.doc_class_to_idx:
+            doc_class = instance["doc_key"][:2]
+            if doc_class in self.doc_class_to_idx:
+                doc_class_idx = self.doc_class_to_idx[doc_class]
+            else:
+                doc_class_idx = self.doc_class_to_idx['nw']
             return {'genre': self.genre_embeddings(torch.tensor(doc_class_idx, device=self.device))}
         else:
             return {}

@@ -11,7 +11,7 @@ import random
 from transformers import get_linear_schedule_with_warmup, AdamW
 
 from auto_memory_model.utils import action_sequences_to_clusters
-from data_utils.utils import load_data
+from data_utils.utils import load_data, load_eval_data
 from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
@@ -33,13 +33,16 @@ class Experiment:
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
             self.canonical_cluster_threshold = 1
         elif self.dataset == 'ontonotes':
-            # OntoNotes
             self.canonical_cluster_threshold = 2
         elif self.dataset == 'preco':
-            # OntoNotes
             self.canonical_cluster_threshold = 1
+        elif self.dataset == 'quizbowl':
+            self.canonical_cluster_threshold = 1
+        elif self.dataset == 'wikicoref':
+            self.canonical_cluster_threshold = 2
 
         self.orig_data_map = self.load_data()
+
         self.data_processor = TensorizeDataset()
         self.data_iter_map = {}
 
@@ -55,10 +58,12 @@ class Experiment:
         if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
             self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
+            self.num_training_steps = 1e6
             self.patience = 10  # Maximum evals without improvement in dev performance
             # Initialize model and training metadata
-            self.setup_training()
-            self.train()
+            do_train = self.setup_training()
+            if do_train:
+                self.train()
 
             self.load_model(self.best_model_path, model_type='best')
             logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
@@ -68,8 +73,13 @@ class Experiment:
         self.perform_final_eval()
 
     def load_data(self):
-        return load_data(self.data_dir, self.max_segment_len, dataset=self.dataset, singleton_file=self.singleton_file,
-                         num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
+        if self.eval_model:
+            return load_eval_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
+                                  num_eval_docs=self.num_eval_docs)
+        else:
+            return load_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
+                             singleton_file=self.singleton_file,
+                             num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
 
     def setup_training(self):
         self.model = pick_controller(
@@ -84,8 +94,17 @@ class Experiment:
         utils.print_model_info(self.model)
         sys.stdout.flush()
 
+        # Check if further training is required
+        if self.train_info['num_stuck_evals'] >= self.patience:
+            return False
+        if self.eval_per_k_steps and self.train_info['global_steps'] >= self.num_training_steps:
+            return False
+        if (not self.eval_per_k_steps) and (self.train_info['epoch'] >= self.max_epochs):
+            return False
+
         self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
         self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'], training=True)
+        return True
 
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
@@ -113,14 +132,14 @@ class Experiment:
 
         self.scaler = torch.cuda.amp.GradScaler()
 
-        num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
-        num_warmup_steps = int(0.1 * num_training_steps)
+        self.num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
+        num_warmup_steps = int(0.1 * self.num_training_steps)
 
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
         # self.optimizer['mem'] = FusedAdam(self.model.get_params()[1], lr=self.init_lr)
         # No warmup for model params
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=num_training_steps)
+            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=self.num_training_steps)
 
         if self.fine_tune_lr is not None:
             no_decay = ['bias', 'LayerNorm.weight']
@@ -137,15 +156,12 @@ class Experiment:
             # self.optimizer['doc'] = FusedAdam(grouped_param, lr=self.init_lr, weight_decay=0.01)
             self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr, eps=1e-6)
             self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
-                self.optimizer['doc'], num_warmup_steps=num_warmup_steps, num_training_steps=num_training_steps)
+                self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
+                num_training_steps=self.num_training_steps)
 
     def train(self):
         """Train model"""
-        if self.train_info['num_stuck_evals'] >= self.patience:
-            return
-
         model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
-        # Setup training
         model.train()
 
         for epoch in range(self.train_info['epoch'], self.max_epochs):
@@ -194,6 +210,8 @@ class Experiment:
 
                     if self.train_info['num_stuck_evals'] >= self.patience:
                         return
+                    if self.train_info['global_steps'] >= self.num_training_steps:
+                        return
 
                 if self.train_info['global_steps'] % self.update_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -211,6 +229,8 @@ class Experiment:
                 elapsed_time = time.time() - start_time
                 logger.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
                             % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time))
+                if self.train_info['num_stuck_evals'] >= self.patience:
+                    return
 
             sys.stdout.flush()
             logger.handlers[0].flush()
@@ -251,7 +271,10 @@ class Experiment:
         inference_time = 0.0
 
         with torch.no_grad():
-            log_file = path.join(self.model_dir, split + ".log.jsonl")
+            dataset_dir = path.join(self.model_dir, self.dataset)
+            if not path.exists(dataset_dir):
+                os.makedirs(dataset_dir)
+            log_file = path.join(dataset_dir, split + ".log.jsonl")
             with open(log_file, 'w') as f:
                 # Capture the auxiliary action accuracy
                 corr_actions, total_actions = 0.0, 0.0
@@ -357,7 +380,10 @@ class Experiment:
 
     def perform_final_eval(self):
         """Evaluate the model on train, dev, and test"""
-        perf_file = path.join(self.model_dir, "perf.json")
+        dataset_dir = path.join(self.model_dir, self.dataset)
+        if not path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+        perf_file = path.join(dataset_dir, "perf.json")
         if self.slurm_id:
             parent_dir = path.dirname(path.normpath(self.model_dir))
             perf_dir = path.join(parent_dir, "perf")
@@ -375,7 +401,10 @@ class Experiment:
                 # We had truncated the document earlier - But now we want to process the whole training document
                 self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'])
             if split not in self.data_iter_map:
-                self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
+                if split in self.orig_data_map:
+                    self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
+                else:
+                    continue
 
             cluster_thresholds = [self.canonical_cluster_threshold]
             for cluster_threshold in cluster_thresholds:

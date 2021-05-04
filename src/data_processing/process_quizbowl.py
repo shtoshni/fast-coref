@@ -54,7 +54,6 @@ class DocumentState(object):
         # populate clusters
         first_subtoken_index = -1
         for seg_idx, segment in enumerate(self.segment_info):
-            speakers = []
             for i, tok_info in enumerate(segment):
                 first_subtoken_index += 1
                 coref = tok_info[-2] if tok_info is not None else '-'
@@ -164,9 +163,9 @@ def get_document(document_lines, tokenizer, segment_len):
         row = line.split()
         sentence_end = len(row) == 0
         if not sentence_end:
-            assert len(row) >= 12
-            if len(row) == 12:
-                row.append('-')
+            assert len(row) == 12
+            # if len(row) == 11:
+            #     row.append('-')
             word_idx += 1
             word = normalize_word(row[3])
             subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
@@ -186,17 +185,15 @@ def get_document(document_lines, tokenizer, segment_len):
     constraints1 = document_state.sentence_end
     split_into_segments(document_state, segment_len,
                         constraints1, document_state.token_end)
-    stats["max_sent_len"] = max(max(
-        [len(s) for s in document_state.segments]), stats["max_sent_len"])
     document = document_state.finalize()
     return document
 
 
-def minimize_partition(split, cross_val_split, tokenizer,
-                       seg_len, input_dir, output_dir):
-    input_path = path.join(input_dir, "{}/{}.conll".format(cross_val_split, split))
-    output_path = path.join(output_dir, "{}/{}.{}.jsonlines".format(
-        cross_val_split, split, seg_len))
+def minimize_split(seg_len, input_dir, output_dir, split="test"):
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+
+    input_path = path.join(input_dir, "{}.conll".format(split))
+    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
     documents = []
@@ -221,34 +218,10 @@ def minimize_partition(split, cross_val_split, tokenizer,
     print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(cross_val_split, seg_len, input_dir, output_dir):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    # Create cross validation output dir
-    cross_val_dir = path.join(output_dir, str(cross_val_split))
-    if not path.exists(cross_val_dir):
-        os.makedirs(cross_val_dir)
-
-    minimize_partition("dev", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("train", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("test", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
-
-
 if __name__ == "__main__":
     input_dir = sys.argv[1]
     output_dir = sys.argv[2]
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    for cross_val_split in range(10):
-        # for seg_len in [128, 256, 384, 512]:
-        for seg_len in [2048, 4096]:
-            labels = collections.defaultdict(set)
-            stats = collections.defaultdict(int)
-            minimize_split(cross_val_split, seg_len, input_dir, output_dir)
-            for k, v in labels.items():
-                print("{} = [{}]".format(k, ", ".join(
-                    "\"{}\"".format(label) for label in v)))
-            for k, v in stats.items():
-                print("{} = {}".format(k, v))
+    for seg_len in [2048, 4096]:
+        minimize_split(seg_len, input_dir, output_dir)

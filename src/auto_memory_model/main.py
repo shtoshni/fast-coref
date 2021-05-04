@@ -28,7 +28,8 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='ontonotes', choices=['litbank', 'ontonotes', 'preco'], type=str)
+        '-dataset', default='ontonotes', type=str,
+        choices=['litbank', 'ontonotes', 'preco', 'quizbowl', 'wikicoref'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
