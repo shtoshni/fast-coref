@@ -26,6 +26,8 @@ logger = logging.getLogger()
 class Experiment:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
+        self.model_args = kwargs
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
@@ -48,7 +50,6 @@ class Experiment:
 
         self.model = None
         self.finetune = (self.fine_tune_lr is not None)
-        self.model_args = kwargs
 
         self.model_path = path.join(self.model_dir, 'model.pth')
         self.best_model_path = path.join(self.best_model_dir, 'model.pth')
@@ -77,9 +78,7 @@ class Experiment:
             return load_eval_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
                                   num_eval_docs=self.num_eval_docs)
         else:
-            return load_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
-                             singleton_file=self.singleton_file,
-                             num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
+            return load_data(**self.model_args)
 
     def setup_training(self):
         self.model = pick_controller(

@@ -22,6 +22,8 @@ def main():
         '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
     parser.add_argument('-singleton_file', default=None,
                         help='Singleton mentions separately extracted for training.')
+    parser.add_argument('-skip_dialog_data', default=False, action="store_true",
+                        help='Skip dialog data.')
     parser.add_argument('-base_model_dir', default='../models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument('-model_dir', default=None,
@@ -112,7 +114,7 @@ def main():
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
                 'dropout_rate', 'seed', 'init_lr', 'max_epochs',
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
-                'num_train_docs', 'sim_func', 'fine_tune_lr', 'doc_class']
+                'num_train_docs', 'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data']
 
     changed_opts = OrderedDict()
     dict_args = vars(args)
@@ -134,6 +136,7 @@ def main():
     key_val_pairs = sorted(opt_dict.items())
     str_repr = '_'.join([f'{key}_{val}' for key, val in key_val_pairs])
     model_name = f"longformer_{args.dataset}_" + str_repr
+    model_name = model_name.strip('_')
 
     if args.eval_model:
         args.max_training_segments = None
