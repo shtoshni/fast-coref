@@ -21,18 +21,17 @@ class BaseController(nn.Module):
 
         self.num_feats = 2
         self.doc_class_to_idx = {}
-        if self.dataset == 'ontonotes':
-            if self.doc_class is not None:
-                self.num_feats = 3
-                # Ontonotes - Genre embedding
-                if self.doc_class == 'dialog':
-                    self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
-                    self.genre_embeddings = nn.Embedding(2, self.emb_size)
-                else:
-                    genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
-                    for idx, genre in enumerate(genre_list):
-                        self.doc_class_to_idx[genre] = idx
-                    self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size)
+        if self.doc_class is not None:
+            self.num_feats = 3
+            # Ontonotes - Genre embedding
+            if self.doc_class == 'dialog':
+                self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
+                self.genre_embeddings = nn.Embedding(2, self.emb_size)
+            else:
+                genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+                for idx, genre in enumerate(genre_list):
+                    self.doc_class_to_idx[genre] = idx
+                self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size)
 
         # Mention modeling part
         self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
@@ -242,7 +241,7 @@ class BaseController(nn.Module):
             if doc_class in self.doc_class_to_idx:
                 doc_class_idx = self.doc_class_to_idx[doc_class]
             else:
-                doc_class_idx = self.doc_class_to_idx['nw']
+                doc_class_idx = self.doc_class_to_idx['nw']  # Non-dialog
             return {'genre': self.genre_embeddings(torch.tensor(doc_class_idx, device=self.device))}
         else:
             return {}

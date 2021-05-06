@@ -31,19 +31,24 @@ class Experiment:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
+        self.canonical_cluster_threshold = {
+            'litbank': 1, 'preco': 1, 'quizbowl': 1,
+            'wikicoref': 2, 'ontonotes': 2,
+        }
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
-            self.canonical_cluster_threshold = 1
-        elif self.dataset == 'ontonotes':
-            self.canonical_cluster_threshold = 2
-        elif self.dataset == 'preco':
-            self.canonical_cluster_threshold = 1
-        elif self.dataset == 'quizbowl':
-            self.canonical_cluster_threshold = 1
-        elif self.dataset == 'wikicoref':
-            self.canonical_cluster_threshold = 2
 
-        self.orig_data_map = self.load_data()
+        self.orig_data_map = {}
+        for dataset, data_dir in self.data_dir_dict.items():
+            num_train_docs = None
+            if dataset == 'ontonotes':
+                num_train_docs = self.num_ontonotes_docs
+            elif dataset == 'preco':
+                num_train_docs = self.num_preco_docs
+            elif dataset == 'litbank':
+                num_train_docs = self.num_litbank_docs
+
+            self.orig_data_map[dataset] = self.load_data(data_dir, dataset=dataset, num_train_docs=num_train_docs)
 
         self.data_processor = TensorizeDataset()
         self.data_iter_map = {}
@@ -73,12 +78,13 @@ class Experiment:
 
         self.perform_final_eval()
 
-    def load_data(self):
+    def load_data(self, data_dir=None, dataset='litbank', num_train_docs=None):
         if self.eval_model:
             return load_eval_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
                                   num_eval_docs=self.num_eval_docs)
         else:
-            return load_data(**self.model_args)
+            return load_data(data_dir, dataset=dataset,
+                             num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data, )
 
     def setup_training(self):
         self.model = pick_controller(
@@ -101,8 +107,14 @@ class Experiment:
         if (not self.eval_per_k_steps) and (self.train_info['epoch'] >= self.max_epochs):
             return False
 
-        self.data_iter_map['dev'] = self.data_processor.tensorize_data(self.orig_data_map['dev'])
-        self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'], training=True)
+        self.data_iter_map['dev'] = {}
+        self.data_iter_map['train'] = {}
+        for dataset in self.orig_data_map:
+            self.data_iter_map['dev'][dataset] =\
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['dev'])
+            self.data_iter_map['train'][dataset] = \
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['train'], training=True)
+
         return True
 
     def setup_eval(self):
@@ -131,11 +143,13 @@ class Experiment:
 
         self.scaler = torch.cuda.amp.GradScaler()
 
-        self.num_training_steps = len(self.orig_data_map['train']) * self.max_epochs
+        self.num_training_steps = sum([len(self.orig_data_map[dataset]['train'])
+                                       for dataset in self.orig_data_map]) * self.max_epochs
         num_warmup_steps = int(0.1 * self.num_training_steps)
 
+        logger.info(f"Number of training steps: {self.num_training_steps}")
+
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
-        # self.optimizer['mem'] = FusedAdam(self.model.get_params()[1], lr=self.init_lr)
         # No warmup for model params
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
             self.optimizer['mem'], num_warmup_steps=0, num_training_steps=self.num_training_steps)
@@ -167,7 +181,12 @@ class Experiment:
             logger.info("\n\nStart Epoch %d" % (epoch + 1))
             start_time = time.time()
 
-            train_data = self.data_iter_map['train']
+            # train_data = self.data_iter_map['train']
+            # np.random.shuffle(train_data)
+
+            train_data = []
+            for dataset, dataset_train_data in self.data_iter_map['train'].items():
+                train_data += dataset_train_data
             np.random.shuffle(train_data)
 
             encoder_params, task_params = model.get_params()
@@ -236,10 +255,15 @@ class Experiment:
 
     def periodic_model_eval(self):
         # Dev performance
-        fscore = self.evaluate_model(cluster_threshold=self.canonical_cluster_threshold)['fscore']
+        fscore_dict = {}
+        for dataset in self.data_iter_map['dev']:
+            fscore_dict[dataset] = self.evaluate_model(
+                dataset=dataset,
+                cluster_threshold=self.canonical_cluster_threshold[dataset])['fscore']
 
-        # Assume that the model didn't improve
-        self.train_info['num_stuck_evals'] += 1
+        logger.info(fscore_dict)
+        # Calculate Mean F-score
+        fscore = sum([fscore_dict[dataset] for dataset in fscore_dict])/len(fscore_dict)
 
         # Update model if dev performance improves
         if fscore > self.train_info['val_perf']:
@@ -247,21 +271,18 @@ class Experiment:
             self.train_info['val_perf'] = fscore
             logger.info('Saving best model')
             self.save_model(self.best_model_path, model_type='best')
+        else:
+            self.train_info['num_stuck_evals'] += 1
 
         # Save model
         if self.to_save_model:
-            if self.dataset == 'litbank':
-                # Can train LitBank in one slurm job - Save Disk I/o time
-                if (self.train_info['epoch']) % 10 == 0:
-                    self.save_model(self.model_path)
-            else:
-                self.save_model(self.model_path)
+            self.save_model(self.model_path)
 
         # Go back to training mode
         self.model.train()
         return fscore
 
-    def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1):
+    def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1, dataset='litbank'):
         """Eval model"""
         model = self.model
         model.eval()
@@ -280,8 +301,8 @@ class Experiment:
                 oracle_evaluator, evaluator = CorefEvaluator(), CorefEvaluator()
                 coref_predictions, subtoken_maps = {}, {}
 
-                logger.info(f"Evaluating on {len(self.data_iter_map[split])} examples")
-                for example in self.data_iter_map[split]:
+                logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
+                for example in self.data_iter_map[split][dataset]:
                     start_time = time.time()
                     action_list, pred_mentions, gt_actions = model(example)
                     # Predicted cluster
@@ -349,7 +370,7 @@ class Experiment:
 
                 try:
                     if final_eval and use_conll and path_exists_bool:
-                        gold_path = path.join(self.conll_data_dir, f'{split}.conll')
+                        gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
                         prediction_file = path.join(self.model_dir, f'{split}.conll')
                         conll_results = evaluate_conll(
                             self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
@@ -396,26 +417,23 @@ class Experiment:
 
         # for split in ['test', 'dev', 'train']:
         for split in ['test', 'dev']:
-            if split == 'train':
-                # We had truncated the document earlier - But now we want to process the whole training document
-                self.data_iter_map['train'] = self.data_processor.tensorize_data(self.orig_data_map['train'])
             if split not in self.data_iter_map:
-                if split in self.orig_data_map:
-                    self.data_iter_map[split] = self.data_processor.tensorize_data(self.orig_data_map[split])
+                self.data_iter_map[split] = {}
+                for dataset in self.orig_data_map:
+                    self.data_iter_map[split][dataset] = self.data_processor.tensorize_data(
+                        self.orig_data_map[dataset][split])
                 else:
                     continue
 
-            cluster_thresholds = [self.canonical_cluster_threshold]
-            for cluster_threshold in cluster_thresholds:
-                logging.info('\n')
-                logging.info('%s' % split.capitalize())
-                result_dict = self.evaluate_model(split, final_eval=True, cluster_threshold=cluster_threshold)
-                if split != 'test':
-                    logging.info('Calculated F1: %.3f' % result_dict['fscore'])
+            logging.info('\n')
+            logging.info('%s' % split.capitalize())
 
-                output_dict[f"{split}_{cluster_threshold}"] = result_dict
-                if cluster_threshold == self.canonical_cluster_threshold:
-                    output_dict[f"{split}"] = result_dict
+            for dataset in self.data_iter_map[split]:
+                result_dict = self.evaluate_model(
+                    split, dataset=dataset, final_eval=True,
+                    cluster_threshold=self.canonical_cluster_threshold[dataset])
+
+                output_dict[f"{dataset}_{split}"] = result_dict
 
         json.dump(output_dict, open(perf_file, 'w'), indent=2)
 

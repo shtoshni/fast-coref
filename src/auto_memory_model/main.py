@@ -18,8 +18,7 @@ def main():
     # Add arguments to parser
     parser.add_argument(
         '-base_data_dir', default='../data/', help='Root directory of data', type=str)
-    parser.add_argument(
-        '-data_dir', default=None, help='Data directory. Use this when it is specified', type=str)
+    parser.add_argument('-data_dir', default=None, help='Data directory', type=str)
     parser.add_argument('-singleton_file', default=None,
                         help='Singleton mentions separately extracted for training.')
     parser.add_argument('-skip_dialog_data', default=False, action="store_true",
@@ -30,8 +29,7 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='ontonotes', type=str,
-        choices=['litbank', 'ontonotes', 'preco', 'quizbowl', 'wikicoref'])
+        '-dataset', default='joint', type=str)
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -75,8 +73,12 @@ def main():
     # Training params
     parser.add_argument('-cross_val_split', default=0, type=int,
                         help='Cross validation split to be used.')
-    parser.add_argument('-num_train_docs', default=None, type=int,
-                        help='Number of training docs.')
+    parser.add_argument('-num_litbank_docs', default=None, type=int,
+                        help='Number of litbank training docs.')
+    parser.add_argument('-num_ontonotes_docs', default=None, type=int,
+                        help='Number of ontonotes training docs.')
+    parser.add_argument('-num_preco_docs', default=2500, type=int,
+                        help='Number of preco training docs.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
@@ -114,7 +116,8 @@ def main():
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
                 'dropout_rate', 'seed', 'init_lr', 'max_epochs',
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
-                'num_train_docs', 'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data']
+                'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs',
+                'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data']
 
     changed_opts = OrderedDict()
     dict_args = vars(args)
@@ -158,26 +161,15 @@ def main():
 
     print("Model directory:", args.model_dir)
 
-    if args.data_dir is None:
-        if args.dataset == 'litbank':
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/independent/{args.cross_val_split}')
-            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll/{args.cross_val_split}')
-        elif args.dataset == 'ontonotes':
-            args.data_dir = path.join(args.base_data_dir, f'{args.dataset}/independent')
-            args.conll_data_dir = path.join(args.base_data_dir, f'{args.dataset}/conll')
-        else:
-            args.conll_data_dir = None
-    else:
-        base_dir = path.dirname(args.data_dir.rstrip("/"))
-        if args.dataset == 'litbank':
-            args.data_dir = path.join(args.data_dir, f'{args.cross_val_split}')
-            args.conll_data_dir = path.join(base_dir, f'conll/{args.cross_val_split}')
-        elif args.dataset == 'ontonotes':
-            args.conll_data_dir = path.join(base_dir, "conll")
-        else:
-            args.conll_data_dir = None
-
-    print(args.data_dir)
+    args.data_dir_dict = {
+        'ontonotes': path.join(args.base_data_dir, 'ontonotes/independent_longformer'),
+        'preco': path.join(args.base_data_dir, 'preco/independent_longformer'),
+        'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
+    }
+    args.conll_data_dir = {
+        'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
+        'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
+    }
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")

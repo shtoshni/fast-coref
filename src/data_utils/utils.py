@@ -2,7 +2,7 @@ import json
 from os import path
 
 
-def load_data(data_dir=None, max_segment_len=2048, dataset='litbank', singleton_file=None,
+def load_data(data_dir, max_segment_len=2048, dataset='litbank', singleton_file=None,
               num_train_docs=None, num_eval_docs=None, skip_dialog_data=False, **kwargs):
     all_splits = []
     for split in ["train", "dev", "test"]:
