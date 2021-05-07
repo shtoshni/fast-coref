@@ -187,7 +187,11 @@ class BaseController(nn.Module):
                 for ment_start, ment_end in cluster:
                     mentions.append((ment_start, ment_end))
 
-            topk_starts, topk_ends = zip(*mentions)
+            if len(mentions):
+                topk_starts, topk_ends = zip(*mentions)
+            else:
+                return None, [], None, {}
+
             topk_starts = torch.tensor(topk_starts, device=self.device)
             topk_ends = torch.tensor(topk_ends, device=self.device)
             # Fake positive score

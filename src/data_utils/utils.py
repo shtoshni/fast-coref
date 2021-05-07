@@ -2,8 +2,10 @@ import json
 from os import path
 
 
-def load_data(data_dir, max_segment_len=2048, dataset='litbank', singleton_file=None,
-              num_train_docs=None, num_eval_docs=None, skip_dialog_data=False, **kwargs):
+def load_data(data_dir, max_segment_len=2048, dataset='litbank',
+              num_train_docs=None, num_eval_docs=None, skip_dialog_data=False,
+              singleton_file=None,
+              **kwargs):
     all_splits = []
     for split in ["train", "dev", "test"]:
         jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
@@ -37,7 +39,7 @@ def load_data(data_dir, max_segment_len=2048, dataset='litbank', singleton_file=
     return {"train": train_data[:num_train_docs], "dev": dev_data[:num_eval_docs], "test": test_data[:num_eval_docs]}
 
 
-def load_eval_data(data_dir, max_segment_len, dataset='quizbowl', num_eval_docs=None, split="test"):
+def load_eval_data(data_dir, dataset='quizbowl', max_segment_len=2048, num_eval_docs=None, split="test"):
     jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
     split_data = []
     with open(jsonl_file) as f:

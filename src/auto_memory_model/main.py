@@ -29,7 +29,8 @@ def main():
                         help='Model directory', type=str)
 
     parser.add_argument(
-        '-dataset', default='joint', type=str)
+        '-dataset', default='joint_lop', type=str,
+        choices=['all', 'joint_lop', 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -79,10 +80,14 @@ def main():
                         help='Number of ontonotes training docs.')
     parser.add_argument('-num_preco_docs', default=2500, type=int,
                         help='Number of preco training docs.')
+    parser.add_argument('-num_train_docs', default=None, type=int,
+                        help='Number of training docs.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
                         help='Dropout rate')
+    parser.add_argument('-remove_singletons', default=False, action="store_true",
+                        help='Remove singletons from training and eval.')
     parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
                         help='Label Smoothing')
     parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
@@ -117,7 +122,8 @@ def main():
                 'dropout_rate', 'seed', 'init_lr', 'max_epochs',
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
                 'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs',
-                'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data']
+                'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data',
+                'remove_singletons']
 
     changed_opts = OrderedDict()
     dict_args = vars(args)
@@ -161,15 +167,42 @@ def main():
 
     print("Model directory:", args.model_dir)
 
-    args.data_dir_dict = {
+    data_dir_dict = {
         'ontonotes': path.join(args.base_data_dir, 'ontonotes/independent_longformer'),
         'preco': path.join(args.base_data_dir, 'preco/independent_longformer'),
+        'wikicoref': path.join(args.base_data_dir, 'wikicoref/independent_longformer'),
+        'quizbowl': path.join(args.base_data_dir, 'quizbowl/independent_longformer'),
         'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
+
     }
-    args.conll_data_dir = {
+    conll_data_dir = {
         'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
         'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
     }
+
+    if args.dataset == 'all':
+        args.data_dir_dict = data_dir_dict
+        args.conll_data_dir = conll_data_dir
+    elif args.dataset == 'joint_lop':
+        args.data_dir_dict = {}
+        args.conll_data_dir = {}
+        for dataset in ['litbank', 'ontonotes', 'preco']:
+            args.data_dir_dict[dataset] = data_dir_dict[dataset]
+            if dataset in conll_data_dir:
+                args.conll_data_dir[dataset] = conll_data_dir[dataset]
+    else:
+        if args.dataset != 'litbank':
+            args.data_dir_dict = {
+                args.dataset: path.join(args.base_data_dir, f'{args.dataset}/independent_longformer')
+            }
+        else:
+            args.data_dir_dict = {
+                'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
+            }
+
+        args.conll_data_dir = {}
+        if args.dataset in conll_data_dir:
+            args.conll_data_dir[args.dataset] = conll_data_dir
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")

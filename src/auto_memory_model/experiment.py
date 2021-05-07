@@ -35,6 +35,10 @@ class Experiment:
             'litbank': 1, 'preco': 1, 'quizbowl': 1,
             'wikicoref': 2, 'ontonotes': 2,
         }
+        if self.remove_singletons:
+            if self.dataset in self.canonical_cluster_threshold:
+                self.canonical_cluster_threshold[self.dataset] = 2
+
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
 
@@ -50,7 +54,7 @@ class Experiment:
 
             self.orig_data_map[dataset] = self.load_data(data_dir, dataset=dataset, num_train_docs=num_train_docs)
 
-        self.data_processor = TensorizeDataset()
+        self.data_processor = TensorizeDataset(remove_singletons=self.remove_singletons)
         self.data_iter_map = {}
 
         self.model = None
@@ -80,11 +84,11 @@ class Experiment:
 
     def load_data(self, data_dir=None, dataset='litbank', num_train_docs=None):
         if self.eval_model:
-            return load_eval_data(self.data_dir, self.max_segment_len, dataset=self.dataset,
+            return load_eval_data(data_dir, dataset=dataset, max_segment_len=self.max_segment_len,
                                   num_eval_docs=self.num_eval_docs)
         else:
-            return load_data(data_dir, dataset=dataset,
-                             num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data, )
+            return load_data(data_dir, dataset=dataset, num_eval_docs=self.num_eval_docs,
+                             num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data)
 
     def setup_training(self):
         self.model = pick_controller(
@@ -99,6 +103,17 @@ class Experiment:
         utils.print_model_info(self.model)
         sys.stdout.flush()
 
+        self.data_iter_map['dev'] = {}
+        self.data_iter_map['train'] = {}
+        self.data_iter_map['test'] = {}
+        for dataset in self.orig_data_map:
+            self.data_iter_map['dev'][dataset] =\
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['dev'])
+            self.data_iter_map['test'][dataset] = \
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
+            self.data_iter_map['train'][dataset] = \
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['train'], training=True)
+
         # Check if further training is required
         if self.train_info['num_stuck_evals'] >= self.patience:
             return False
@@ -106,14 +121,6 @@ class Experiment:
             return False
         if (not self.eval_per_k_steps) and (self.train_info['epoch'] >= self.max_epochs):
             return False
-
-        self.data_iter_map['dev'] = {}
-        self.data_iter_map['train'] = {}
-        for dataset in self.orig_data_map:
-            self.data_iter_map['dev'][dataset] =\
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['dev'])
-            self.data_iter_map['train'][dataset] = \
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['train'], training=True)
 
         return True
 
@@ -134,6 +141,11 @@ class Experiment:
                 self.model.max_span_width = self.max_span_width
             if self.top_span_ratio is not None:
                 self.model.top_span_ratio = self.top_span_ratio
+
+        self.data_iter_map['test'] = {}
+        for dataset in self.orig_data_map:
+            self.data_iter_map['test'][dataset] = \
+                self.data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
 
     def initialize_optimizers(self):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
@@ -188,6 +200,8 @@ class Experiment:
             for dataset, dataset_train_data in self.data_iter_map['train'].items():
                 train_data += dataset_train_data
             np.random.shuffle(train_data)
+            if self.num_train_docs:
+                train_data = train_data[:self.num_train_docs]
 
             encoder_params, task_params = model.get_params()
 
@@ -291,7 +305,7 @@ class Experiment:
         inference_time = 0.0
 
         with torch.no_grad():
-            dataset_dir = path.join(self.model_dir, self.dataset)
+            dataset_dir = path.join(self.model_dir, dataset)
             if not path.exists(dataset_dir):
                 os.makedirs(dataset_dir)
             log_file = path.join(dataset_dir, split + ".log.jsonl")
@@ -366,7 +380,7 @@ class Experiment:
                 # (3) Check if the scorer and CoNLL annotation directory exist
                 path_exists_bool = False
                 if self.conll_scorer is not None and self.conll_data_dir is not None:
-                    path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir)
+                    path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
 
                 try:
                     if final_eval and use_conll and path_exists_bool:
@@ -400,45 +414,34 @@ class Experiment:
 
     def perform_final_eval(self):
         """Evaluate the model on train, dev, and test"""
-        dataset_dir = path.join(self.model_dir, self.dataset)
-        if not path.exists(dataset_dir):
-            os.makedirs(dataset_dir)
-        perf_file = path.join(dataset_dir, "perf.json")
-        if self.slurm_id:
-            parent_dir = path.dirname(path.normpath(self.model_dir))
-            perf_dir = path.join(parent_dir, "perf")
-            if not path.exists(perf_dir):
-                os.makedirs(perf_dir)
-            perf_file = path.join(perf_dir, self.slurm_id + ".json")
-
-        output_dict = {'model_dir': self.model_dir}
+        base_output_dict = {'model_dir': self.model_dir}
         for key, val in self.model_args.items():
-            output_dict[key] = val
+            base_output_dict[key] = val
 
         # for split in ['test', 'dev', 'train']:
-        for split in ['test', 'dev']:
-            if split not in self.data_iter_map:
-                self.data_iter_map[split] = {}
-                for dataset in self.orig_data_map:
-                    self.data_iter_map[split][dataset] = self.data_processor.tensorize_data(
-                        self.orig_data_map[dataset][split])
-                else:
-                    continue
-
-            logging.info('\n')
-            logging.info('%s' % split.capitalize())
+        for split in ['test']:
+            logger.info('\n')
+            logger.info('%s' % split.capitalize())
 
             for dataset in self.data_iter_map[split]:
+                dataset_dir = path.join(self.model_dir, dataset)
+                if not path.exists(dataset_dir):
+                    os.makedirs(dataset_dir)
+                perf_file = path.join(dataset_dir, "perf.json")
+
+                logger.info('\n')
+                logger.info('%s\n' % dataset.capitalize())
                 result_dict = self.evaluate_model(
                     split, dataset=dataset, final_eval=True,
                     cluster_threshold=self.canonical_cluster_threshold[dataset])
 
+                output_dict = dict(base_output_dict)
                 output_dict[f"{dataset}_{split}"] = result_dict
 
-        json.dump(output_dict, open(perf_file, 'w'), indent=2)
+                json.dump(output_dict, open(perf_file, 'w'), indent=2)
 
-        logging.info("Final performance summary at %s" % perf_file)
-        sys.stdout.flush()
+                logging.info("Final performance summary at %s" % perf_file)
+                sys.stdout.flush()
 
     def load_model(self, location, model_type='last'):
         checkpoint = torch.load(location, map_location='cpu')

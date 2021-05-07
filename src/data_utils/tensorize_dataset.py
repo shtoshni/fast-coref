@@ -4,10 +4,11 @@ from transformers import LongformerTokenizerFast
 
 
 class TensorizeDataset:
-    def __init__(self):
+    def __init__(self, remove_singletons=False):
         self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096')
         # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cpu")
+        self.remove_singletons = remove_singletons
 
     def tensorize_data(self, split_data, training=False):
         tensorized_data = []
@@ -62,5 +63,8 @@ class TensorizeDataset:
                        "subtoken_map": subtoken_map,
                        "sentence_map": torch.tensor(sentence_map, device=self.device),
                        }
+
+        if self.remove_singletons:
+            output_dict['clusters'] = [cluster for cluster in output_dict['clusters'] if len(cluster) > 1]
 
         return output_dict
