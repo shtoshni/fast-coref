@@ -106,6 +106,8 @@ class ControllerPredInvalid(BaseController):
             }
 
             cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
+            if cur_pred_mentions is None:
+                continue
             cur_pred_mentions = cur_pred_mentions + token_offset
             token_offset += num_tokens
 
