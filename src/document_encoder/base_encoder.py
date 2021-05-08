@@ -8,9 +8,8 @@ class BaseDocEncoder(nn.Module):
         super(BaseDocEncoder, self).__init__()
         self.device = device
         self.finetune = finetune
-
-        if self.finetune:
-            print("\nFinetuning the document encoder\n")
+        # if self.finetune:
+        #     print("\nFinetuning the document encoder\n")
 
         gradient_checkpointing = False
         if finetune and self.training:
@@ -20,7 +19,7 @@ class BaseDocEncoder(nn.Module):
                 if memory_in_gb > 40:
                     gradient_checkpointing = False
 
-            print(f"Gradient Checkpointing: {gradient_checkpointing}\n")
+            # print(f"Gradient Checkpointing: {gradient_checkpointing}\n")
 
         self.lm_encoder = LongformerModel.from_pretrained(
             f"allenai/longformer-{model_size}-4096", output_hidden_states=False,

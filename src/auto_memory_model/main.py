@@ -92,8 +92,10 @@ def main():
                         help='Label Smoothing')
     parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
                         help='Mention loss computed over topk or all mentions.')
-    parser.add_argument('-max_epochs',
-                        help='Maximum number of epochs', default=25, type=int)
+    parser.add_argument('-max_evals',
+                        help='Maximum number of evals', default=25, type=int)
+    parser.add_argument('-patience',
+                        help='Maximum evaluations without improvement', default=5, type=int)
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-max_gradient_norm',
@@ -102,7 +104,7 @@ def main():
                         default=3e-4, type=float)
     parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
                         default=1e-5, type=float)
-    parser.add_argument('-eval_per_k_steps', default=0, type=int, help='Evaluate on dev set per k steps')
+    parser.add_argument('-eval_per_k_steps', default=None, type=int, help='Evaluate on dev set per k steps')
     parser.add_argument('-update_frequency', default=500, type=int, help='Update freq')
     parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
                         default=True, action="store_false")
@@ -119,7 +121,7 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
-                'dropout_rate', 'seed', 'init_lr', 'max_epochs',
+                'dropout_rate', 'seed', 'init_lr', 'max_evals',
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
                 'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs',
                 'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data',
@@ -180,29 +182,33 @@ def main():
         'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
     }
 
-    if args.dataset == 'all':
-        args.data_dir_dict = data_dir_dict
-        args.conll_data_dir = conll_data_dir
-    elif args.dataset == 'joint_lop':
-        args.data_dir_dict = {}
-        args.conll_data_dir = {}
-        for dataset in ['litbank', 'ontonotes', 'preco']:
-            args.data_dir_dict[dataset] = data_dir_dict[dataset]
-            if dataset in conll_data_dir:
-                args.conll_data_dir[dataset] = conll_data_dir[dataset]
-    else:
-        if args.dataset != 'litbank':
-            args.data_dir_dict = {
-                args.dataset: path.join(args.base_data_dir, f'{args.dataset}/independent_longformer')
-            }
+    if args.data_dir is None:
+        if args.dataset == 'all':
+            args.data_dir_dict = data_dir_dict
+            args.conll_data_dir = conll_data_dir
+        elif args.dataset == 'joint_lop':
+            args.data_dir_dict = {}
+            args.conll_data_dir = {}
+            for dataset in ['litbank', 'ontonotes', 'preco']:
+                args.data_dir_dict[dataset] = data_dir_dict[dataset]
+                if dataset in conll_data_dir:
+                    args.conll_data_dir[dataset] = conll_data_dir[dataset]
         else:
-            args.data_dir_dict = {
-                'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
-            }
+            if args.dataset != 'litbank':
+                args.data_dir_dict = {
+                    args.dataset: path.join(args.base_data_dir, f'{args.dataset}/independent_longformer')
+                }
+            else:
+                args.data_dir_dict = {
+                    'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
+                }
 
+            args.conll_data_dir = {}
+            if args.dataset in conll_data_dir:
+                args.conll_data_dir[args.dataset] = conll_data_dir
+    else:
+        args.data_dir_dict = {args.dataset: args.data_dir}
         args.conll_data_dir = {}
-        if args.dataset in conll_data_dir:
-            args.conll_data_dir[args.dataset] = conll_data_dir
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")

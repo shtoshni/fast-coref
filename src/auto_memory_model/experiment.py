@@ -44,13 +44,14 @@ class Experiment:
 
         self.orig_data_map = {}
         for dataset, data_dir in self.data_dir_dict.items():
-            num_train_docs = None
-            if dataset == 'ontonotes':
-                num_train_docs = self.num_ontonotes_docs
-            elif dataset == 'preco':
-                num_train_docs = self.num_preco_docs
-            elif dataset == 'litbank':
-                num_train_docs = self.num_litbank_docs
+            num_train_docs = self.num_train_docs
+            if num_train_docs is None:
+                if dataset == 'ontonotes':
+                    num_train_docs = self.num_ontonotes_docs
+                elif dataset == 'preco':
+                    num_train_docs = self.num_preco_docs
+                elif dataset == 'litbank':
+                    num_train_docs = self.num_litbank_docs
 
             self.orig_data_map[dataset] = self.load_data(data_dir, dataset=dataset, num_train_docs=num_train_docs)
 
@@ -67,16 +68,15 @@ class Experiment:
 
         if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
-            self.train_info = {'epoch': 0, 'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
+            self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
             self.num_training_steps = 1e6
-            self.patience = 10  # Maximum evals without improvement in dev performance
             # Initialize model and training metadata
             do_train = self.setup_training()
             if do_train:
                 self.train()
 
             self.load_model(self.best_model_path, model_type='best')
-            logger.info("Loading best model after epoch: %d" % self.train_info['epoch'])
+            logger.info("Loading best model after steps: %d" % self.train_info['global_steps'])
         else:
             self.setup_eval()
 
@@ -97,7 +97,7 @@ class Experiment:
         self.initialize_optimizers()
 
         if path.exists(self.model_path):
-            logging.info('Loading previous model: %s' % self.model_path)
+            logger.info('Loading previous model: %s' % self.model_path)
             self.load_model(self.model_path)
 
         utils.print_model_info(self.model)
@@ -119,7 +119,7 @@ class Experiment:
             return False
         if self.eval_per_k_steps and self.train_info['global_steps'] >= self.num_training_steps:
             return False
-        if (not self.eval_per_k_steps) and (self.train_info['epoch'] >= self.max_epochs):
+        if (not self.eval_per_k_steps) and (self.train_info['evals'] >= self.max_evals):
             return False
 
         return True
@@ -155,8 +155,14 @@ class Experiment:
 
         self.scaler = torch.cuda.amp.GradScaler()
 
-        self.num_training_steps = sum([len(self.orig_data_map[dataset]['train'])
-                                       for dataset in self.orig_data_map]) * self.max_epochs
+        if self.eval_per_k_steps is None:
+            per_eval_steps = sum([len(self.orig_data_map[dataset]['train']) for dataset in self.orig_data_map])
+            self.eval_per_k_steps = per_eval_steps
+
+        per_eval_steps = self.eval_per_k_steps
+
+        self.num_training_steps = per_eval_steps * self.max_evals
+
         num_warmup_steps = int(0.1 * self.num_training_steps)
 
         logger.info(f"Number of training steps: {self.num_training_steps}")
@@ -189,12 +195,9 @@ class Experiment:
         model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
         model.train()
 
-        for epoch in range(self.train_info['epoch'], self.max_epochs):
-            logger.info("\n\nStart Epoch %d" % (epoch + 1))
+        while True:
+            logger.info("Steps done %d" % (self.train_info['global_steps']))
             start_time = time.time()
-
-            # train_data = self.data_iter_map['train']
-            # np.random.shuffle(train_data)
 
             train_data = []
             for dataset, dataset_train_data in self.data_iter_map['train'].items():
@@ -233,6 +236,13 @@ class Experiment:
 
                 example_loss = handle_example(cur_example)
 
+                if self.train_info['global_steps'] % self.update_frequency == 0:
+                    logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
+                        cur_example["doc_key"], example_loss,
+                        (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
+                    )
+                    torch.cuda.reset_peak_memory_stats()
+
                 if self.eval_per_k_steps and (self.train_info['global_steps'] % self.eval_per_k_steps == 0):
                     fscore = self.periodic_model_eval()
                     # Get elapsed time
@@ -245,26 +255,6 @@ class Experiment:
                     if self.train_info['global_steps'] >= self.num_training_steps:
                         return
 
-                if self.train_info['global_steps'] % self.update_frequency == 0:
-                    logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
-                        cur_example["doc_key"], example_loss,
-                        (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
-                    )
-                    torch.cuda.reset_peak_memory_stats()
-
-            sys.stdout.flush()
-            # Update epochs done
-            self.train_info['epoch'] = epoch + 1
-            if not self.eval_per_k_steps:
-                fscore = self.periodic_model_eval()
-                # Get elapsed time
-                elapsed_time = time.time() - start_time
-                logger.info("Epoch: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
-                            % (epoch + 1, fscore, self.train_info['val_perf'], elapsed_time))
-                if self.train_info['num_stuck_evals'] >= self.patience:
-                    return
-
-            sys.stdout.flush()
             logger.handlers[0].flush()
 
     def periodic_model_eval(self):
