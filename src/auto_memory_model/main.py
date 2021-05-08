@@ -43,6 +43,7 @@ def main():
     parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
     parser.add_argument('-ment_emb', default='attn', choices=['attn', 'endpoint'], type=str)
     parser.add_argument('-use_gold_ments', default=False, action="store_true")
+    parser.add_argument('-use_topk', default=False, action="store_true", help='Use topk mentions.')
     parser.add_argument('-top_span_ratio', default=0.4, type=float,
                         help='Ratio of top spans proposed as mentions.')
 

@@ -72,6 +72,7 @@ class Experiment:
             self.num_training_steps = 1e6
             # Initialize model and training metadata
             do_train = self.setup_training()
+
             if do_train:
                 self.train()
 
@@ -126,7 +127,9 @@ class Experiment:
 
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
-        self.model = pick_controller(device=self.device, **checkpoint['model_args']).to(self.device)
+        supplied_args = dict(self.model_args)
+        supplied_args.update(checkpoint['model_args'])
+        self.model = pick_controller(device=self.device, **supplied_args).to(self.device)
         self.model.load_state_dict(checkpoint['model'], strict=True)
         print(checkpoint['model_args'])
         # Finally evaluate model
@@ -159,12 +162,8 @@ class Experiment:
             per_eval_steps = sum([len(self.orig_data_map[dataset]['train']) for dataset in self.orig_data_map])
             self.eval_per_k_steps = per_eval_steps
 
-        per_eval_steps = self.eval_per_k_steps
-
-        self.num_training_steps = per_eval_steps * self.max_evals
-
+        self.num_training_steps = self.eval_per_k_steps * self.max_evals
         num_warmup_steps = int(0.1 * self.num_training_steps)
-
         logger.info(f"Number of training steps: {self.num_training_steps}")
 
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
@@ -308,7 +307,7 @@ class Experiment:
                 logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
                 for example in self.data_iter_map[split][dataset]:
                     start_time = time.time()
-                    action_list, pred_mentions, gt_actions = model(example)
+                    action_list, pred_mentions, gt_actions, mention_scores = model(example)
                     # Predicted cluster
                     raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
                     predicted_clusters, mention_to_predicted =\
@@ -336,6 +335,7 @@ class Experiment:
 
                     log_example = dict(example)
                     log_example["pred_mentions"] = pred_mentions
+                    log_example["mention_scores"] = mention_scores
                     if cluster_threshold != 1:
                         # For cluster threshold 1, raw and processed clusters are one and the same
                         log_example["raw_predicted_clusters"] = raw_predicted_clusters

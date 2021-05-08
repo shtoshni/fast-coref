@@ -80,7 +80,7 @@ class ControllerPredInvalid(BaseController):
     def forward(self, instance, teacher_forcing=False):
         metadata = self.get_metadata(instance)
 
-        action_list, pred_mentions_list, gt_actions = [], [], []
+        action_list, pred_mentions_list, gt_actions, mention_scores = [], [], [], []
         last_memory, token_offset = None, 0
 
         for idx in range(0, len(instance["sentences"])):
@@ -105,18 +105,18 @@ class ControllerPredInvalid(BaseController):
                 "clusters": clusters,
             }
 
-            cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
+            cur_pred_mentions, cur_mention_emb_list, cur_mention_scores = self.get_mention_embs(cur_example)[:3]
             if cur_pred_mentions is None:
                 continue
             cur_pred_mentions = cur_pred_mentions + token_offset
             token_offset += num_tokens
 
-            cur_pred_mentions_list = cur_pred_mentions.tolist()
-            pred_mentions_list.extend(cur_pred_mentions_list)
+            pred_mentions_list.extend(cur_pred_mentions.tolist())
+            mention_scores.extend(cur_mention_scores.tolist())
 
             cur_action_list, last_memory = self.memory_net(
                 cur_pred_mentions, cur_mention_emb_list, metadata, memory_init=last_memory)
             action_list.extend(cur_action_list)
 
         gt_actions = self.get_actions(pred_mentions_list, instance)
-        return action_list, pred_mentions_list, gt_actions
+        return action_list, pred_mentions_list, gt_actions, mention_scores
