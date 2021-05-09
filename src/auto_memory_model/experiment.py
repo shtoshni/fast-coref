@@ -11,13 +11,15 @@ import random
 from transformers import get_linear_schedule_with_warmup, AdamW
 
 from auto_memory_model.utils import action_sequences_to_clusters
-from data_utils.utils import load_data, load_eval_data
+from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
+from auto_memory_model.controller import BaseController
 from auto_memory_model.controller.utils import pick_controller
 from data_utils.tensorize_dataset import TensorizeDataset
+from auto_memory_model.constants import CANONICAL_CLUSTER_THRESHOLD
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
@@ -27,14 +29,10 @@ class Experiment:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
         self.model_args = kwargs
-
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.canonical_cluster_threshold = {
-            'litbank': 1, 'preco': 1, 'quizbowl': 1,
-            'wikicoref': 2, 'ontonotes': 2,
-        }
+        self.canonical_cluster_threshold = CANONICAL_CLUSTER_THRESHOLD
         if self.remove_singletons:
             if self.dataset in self.canonical_cluster_threshold:
                 self.canonical_cluster_threshold[self.dataset] = 2
@@ -42,7 +40,40 @@ class Experiment:
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
 
-        self.orig_data_map = {}
+        self.orig_data_map, self.data_iter_map = {}, {}
+        # Load raw data
+        self.load_data()
+
+        self.model: BaseController = None
+        self.finetune = (self.fine_tune_lr is not None)
+
+        self.model_path = path.join(self.model_dir, 'model.pth')
+        self.best_model_path = path.join(self.best_model_dir, 'model.pth')
+
+        self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
+
+        do_train = False
+        if not self.eval_model:
+            # Train info is a dictionary to keep around important training variables
+            self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
+            self.num_training_steps = 1e6
+            # Initialize model and training metadata
+            do_train = self.setup_training()
+
+        # Prepare data
+        tokenizer = self.model.get_tokenizer()
+        add_speaker_tokens = self.model.to_add_speaker_tokens()
+        self.data_processor = TensorizeDataset(tokenizer, remove_singletons=self.remove_singletons)
+        self.process_data()
+
+        # Train and then test
+        if do_train:
+            self.train()
+
+        self.load_model(self.best_model_path, model_type='best')
+        self.perform_final_eval()
+
+    def load_data(self):
         for dataset, data_dir in self.data_dir_dict.items():
             num_train_docs = self.num_train_docs
             if num_train_docs is None:
@@ -53,47 +84,38 @@ class Experiment:
                 elif dataset == 'litbank':
                     num_train_docs = self.num_litbank_docs
 
-            self.orig_data_map[dataset] = self.load_data(data_dir, dataset=dataset, num_train_docs=num_train_docs)
+            if self.eval_model:
+                self.orig_data_map[dataset] = load_eval_dataset(
+                    data_dir, dataset=dataset, max_segment_len=self.max_segment_len,
+                    num_eval_docs=self.num_eval_docs)
+            else:
+                self.orig_data_map[dataset] = load_dataset(
+                    data_dir, dataset=dataset, num_eval_docs=self.num_eval_docs,
+                    num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data)
 
-        self.data_processor = TensorizeDataset(remove_singletons=self.remove_singletons)
-        self.data_iter_map = {}
-
-        self.model = None
-        self.finetune = (self.fine_tune_lr is not None)
-
-        self.model_path = path.join(self.model_dir, 'model.pth')
-        self.best_model_path = path.join(self.best_model_dir, 'model.pth')
-
-        self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
-
-        if not self.eval_model:
-            # Train info is a dictionary to keep around important training variables
-            self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
-            self.num_training_steps = 1e6
-            # Initialize model and training metadata
-            do_train = self.setup_training()
-
-            if do_train:
-                self.train()
-
-            self.load_model(self.best_model_path, model_type='best')
-            logger.info("Loading best model after steps: %d" % self.train_info['global_steps'])
-        else:
-            self.setup_eval()
-
-        self.perform_final_eval()
-
-    def load_data(self, data_dir=None, dataset='litbank', num_train_docs=None):
+    def process_data(self):
         if self.eval_model:
-            return load_eval_data(data_dir, dataset=dataset, max_segment_len=self.max_segment_len,
-                                  num_eval_docs=self.num_eval_docs)
+            self.data_iter_map['test'] = {}
+            for dataset in self.orig_data_map:
+                self.data_iter_map['test'][dataset] = \
+                    self.data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
         else:
-            return load_data(data_dir, dataset=dataset, num_eval_docs=self.num_eval_docs,
-                             num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data)
+            for split in ['train', 'dev', 'test']:
+                self.data_iter_map[split] = {}
+                training = (split == 'train')
+                for dataset in self.orig_data_map:
+                    self.data_iter_map[split][dataset] = \
+                        self.data_processor.tensorize_data(self.orig_data_map[dataset][split], training=training)
 
     def setup_training(self):
         self.model = pick_controller(
             device=self.device, finetune=self.finetune, **self.model_args).to(self.device)
+
+        if self.eval_per_k_steps is None:
+            per_eval_steps = sum([len(self.orig_data_map[dataset]['train']) for dataset in self.orig_data_map])
+            self.eval_per_k_steps = per_eval_steps
+        self.num_training_steps = self.eval_per_k_steps * self.max_evals
+        logger.info(f"Number of training steps: {self.num_training_steps}")
 
         self.initialize_optimizers()
 
@@ -103,17 +125,6 @@ class Experiment:
 
         utils.print_model_info(self.model)
         sys.stdout.flush()
-
-        self.data_iter_map['dev'] = {}
-        self.data_iter_map['train'] = {}
-        self.data_iter_map['test'] = {}
-        for dataset in self.orig_data_map:
-            self.data_iter_map['dev'][dataset] =\
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['dev'])
-            self.data_iter_map['test'][dataset] = \
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
-            self.data_iter_map['train'][dataset] = \
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['train'], training=True)
 
         # Check if further training is required
         if self.train_info['num_stuck_evals'] >= self.patience:
@@ -127,6 +138,7 @@ class Experiment:
 
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
+        logger.info("Loading best model after steps: %d" % self.train_info['global_steps'])
         supplied_args = dict(self.model_args)
         supplied_args.update(checkpoint['model_args'])
         self.model = pick_controller(device=self.device, **supplied_args).to(self.device)
@@ -145,11 +157,6 @@ class Experiment:
             if self.top_span_ratio is not None:
                 self.model.top_span_ratio = self.top_span_ratio
 
-        self.data_iter_map['test'] = {}
-        for dataset in self.orig_data_map:
-            self.data_iter_map['test'][dataset] = \
-                self.data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
-
     def initialize_optimizers(self):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
         torch.random.manual_seed(self.seed)
@@ -157,15 +164,6 @@ class Experiment:
         random.seed(self.seed)
 
         self.scaler = torch.cuda.amp.GradScaler()
-
-        if self.eval_per_k_steps is None:
-            per_eval_steps = sum([len(self.orig_data_map[dataset]['train']) for dataset in self.orig_data_map])
-            self.eval_per_k_steps = per_eval_steps
-
-        self.num_training_steps = self.eval_per_k_steps * self.max_evals
-        num_warmup_steps = int(0.1 * self.num_training_steps)
-        logger.info(f"Number of training steps: {self.num_training_steps}")
-
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
         # No warmup for model params
         self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
@@ -183,8 +181,8 @@ class Experiment:
                  'weight_decay': 0.0}
             ]
 
-            # self.optimizer['doc'] = FusedAdam(grouped_param, lr=self.init_lr, weight_decay=0.01)
             self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr, eps=1e-6)
+            num_warmup_steps = int(0.1 * self.num_training_steps)
             self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
                 self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
                 num_training_steps=self.num_training_steps)

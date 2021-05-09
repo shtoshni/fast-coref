@@ -48,6 +48,12 @@ class BaseController(nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
         self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
 
+    def get_tokenizer(self):
+        return self.doc_encoder.get_tokenizer()
+
+    def to_add_speaker_tokens(self):
+        return self.doc_encoder.to_add_speaker_tokens()
+
     def get_params(self, named=False):
         encoder_params, mem_params = [], []
         for name, param in self.named_parameters():

@@ -38,6 +38,8 @@ def main():
     parser.add_argument('-model_size', default='large', type=str, help='Model size')
     parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of windowed inputs.')
+    parser.add_argument('-add_speaker_tokens', default=False, action="store_true",
+                        help='Max segment length of windowed inputs.')
 
     # Mention variables
     parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
@@ -126,7 +128,7 @@ def main():
                 'label_smoothing_wt', 'ment_loss',  # weights & sampling
                 'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs',
                 'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data',
-                'remove_singletons']
+                'remove_singletons', 'add_speaker_tokens']
 
     changed_opts = OrderedDict()
     dict_args = vars(args)

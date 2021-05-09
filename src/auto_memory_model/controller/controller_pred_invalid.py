@@ -57,7 +57,7 @@ class ControllerPredInvalid(BaseController):
             return []
 
     def forward_training(self, instance):
-        pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(instance, topk=False)
+        pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(instance)
 
         pred_mentions_list = pred_mentions.tolist()
         gt_actions = self.get_actions(pred_mentions_list, instance)

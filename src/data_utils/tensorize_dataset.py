@@ -1,14 +1,10 @@
 import torch
 
-from transformers import LongformerTokenizerFast
-
-
 class TensorizeDataset:
-    def __init__(self, remove_singletons=False):
-        self.tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096')
-        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cpu")
+    def __init__(self, tokenizer, remove_singletons=False):
+        self.tokenizer = tokenizer
         self.remove_singletons = remove_singletons
+        self.device = torch.device("cpu")
 
     def tensorize_data(self, split_data, training=False):
         tensorized_data = []
