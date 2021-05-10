@@ -51,26 +51,31 @@ class Experiment:
         self.best_model_path = path.join(self.best_model_dir, 'model.pth')
 
         self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
+        self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
 
         do_train = False
+
+        # Prepare model
         if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
-            self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
             self.num_training_steps = 1e6
             # Initialize model and training metadata
             do_train = self.setup_training()
 
+        if not do_train:
+            self.setup_eval()
+
         # Prepare data
         tokenizer = self.model.get_tokenizer()
-        add_speaker_tokens = self.model.to_add_speaker_tokens()
         self.data_processor = TensorizeDataset(tokenizer, remove_singletons=self.remove_singletons)
         self.process_data()
 
         # Train and then test
         if do_train:
             self.train()
+            # Load best model after training is done
+            self.load_model(self.best_model_path, model_type='best')
 
-        self.load_model(self.best_model_path, model_type='best')
         self.perform_final_eval()
 
     def load_data(self):
@@ -138,7 +143,7 @@ class Experiment:
 
     def setup_eval(self):
         checkpoint = torch.load(self.best_model_path, map_location=self.device)
-        logger.info("Loading best model after steps: %d" % self.train_info['global_steps'])
+        logger.info("Loading best model after steps: %d" % checkpoint['train_info']['global_steps'])
         supplied_args = dict(self.model_args)
         supplied_args.update(checkpoint['model_args'])
         self.model = pick_controller(device=self.device, **supplied_args).to(self.device)
@@ -150,12 +155,13 @@ class Experiment:
         if self.use_gold_ments is not None:
             self.model.use_gold_ments = self.use_gold_ments
 
-        if self.dataset != self.model.dataset:
-            # Change the default mention detection constants
-            if self.max_span_width is not None:
-                self.model.max_span_width = self.max_span_width
-            if self.top_span_ratio is not None:
-                self.model.top_span_ratio = self.top_span_ratio
+        # Change the default mention detection constants
+        if self.max_span_width is not None:
+            self.model.max_span_width = self.max_span_width
+        if self.top_span_ratio is not None:
+            self.model.top_span_ratio = self.top_span_ratio
+        if self.use_topk:
+            self.model.use_topk = self.use_topk
 
     def initialize_optimizers(self):
         """Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""

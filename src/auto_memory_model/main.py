@@ -30,7 +30,7 @@ def main():
 
     parser.add_argument(
         '-dataset', default='joint_lop', type=str,
-        choices=['all', 'joint_lop', 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl'])
+        choices=['all', 'joint_lop', 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl', 'cd2cr'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -72,6 +72,8 @@ def main():
                         help="Number of maximum entities in memory during inference.")
     # Dataset-specific features
     parser.add_argument('-doc_class', default=None, choices=['dialog', 'genre'],
+                        help='What information of document class to use.')
+    parser.add_argument('-default_genre', default='nw', choices=["bc", "bn", "mz", "nw", "pt", "tc", "wb"],
                         help='What information of document class to use.')
 
     # Training params
@@ -169,6 +171,11 @@ def main():
         if not path.exists(best_model_dir):
             best_model_dir = args.model_dir
         args.best_model_dir = best_model_dir
+        import torch
+        checkpoint = torch.load(path.join(args.best_model_dir, "model.pth"))
+        model_args = checkpoint['model_args']
+        if 'add_speaker_tokens' in model_args:
+            args.add_speaker_tokens = model_args['add_speaker_tokens']
 
     print("Model directory:", args.model_dir)
 
@@ -178,12 +185,15 @@ def main():
         'wikicoref': path.join(args.base_data_dir, 'wikicoref/independent_longformer'),
         'quizbowl': path.join(args.base_data_dir, 'quizbowl/independent_longformer'),
         'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
-
     }
+
     conll_data_dir = {
         'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
         'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
     }
+
+    if args.add_speaker_tokens:
+        data_dir_dict['ontonotes'] = path.join(args.base_data_dir, 'ontonotes/independent_longformer_speaker')
 
     if args.data_dir is None:
         if args.dataset == 'all':
@@ -197,21 +207,16 @@ def main():
                 if dataset in conll_data_dir:
                     args.conll_data_dir[dataset] = conll_data_dir[dataset]
         else:
-            if args.dataset != 'litbank':
-                args.data_dir_dict = {
-                    args.dataset: path.join(args.base_data_dir, f'{args.dataset}/independent_longformer')
-                }
-            else:
-                args.data_dir_dict = {
-                    'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
-                }
-
+            args.data_dir_dict = {args.dataset: data_dir_dict[args.dataset]}
             args.conll_data_dir = {}
             if args.dataset in conll_data_dir:
-                args.conll_data_dir[args.dataset] = conll_data_dir
+                args.conll_data_dir[args.dataset] = conll_data_dir[args.dataset]
     else:
         args.data_dir_dict = {args.dataset: args.data_dir}
         args.conll_data_dir = {}
+
+    print(args.data_dir_dict)
+    print(args.conll_data_dir)
 
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")

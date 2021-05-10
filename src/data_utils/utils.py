@@ -55,5 +55,7 @@ def load_eval_dataset(data_dir, dataset='quizbowl', max_segment_len=2048, num_ev
         assert (len(split_data) == 30)
     elif dataset == 'litbank':
         assert (len(split_data) == 10)
+    else:
+        pass
 
     return {"test": split_data[:num_eval_docs]}
