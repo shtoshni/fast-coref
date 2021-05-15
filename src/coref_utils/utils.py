@@ -30,6 +30,15 @@ def get_ordered_mentions(clusters):
     return all_mentions
 
 
+def get_cluster_sets(clusters):
+    set_clusters = []
+    clusters = [tuple(tuple(mention) for mention in cluster)
+                for cluster in clusters]
+    for cluster in clusters:
+        set_clusters.append(set(cluster))
+    return set_clusters
+
+
 def remove_singletons(data, key="clusters"):
     data_without_singletons = []
     for instance in data:

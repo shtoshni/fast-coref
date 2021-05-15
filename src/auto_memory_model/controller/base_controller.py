@@ -47,6 +47,9 @@ class BaseController(nn.Module):
         self.memory_net = None
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
         self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
+        if self.normalize_loss:
+            self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='mean')
+            self.loss_fn = nn.CrossEntropyLoss(reduction='mean', ignore_index=-100)
 
     def get_tokenizer(self):
         return self.doc_encoder.get_tokenizer()
@@ -158,6 +161,7 @@ class BaseController(nn.Module):
             else:
                 mention_loss = self.mention_loss_fn(mention_logits[topk_indices],
                                                     torch.clamp(filt_gold_mentions[topk_indices], 0, 1))
+
             uniq_cluster_count = torch.unique(filt_gold_mentions[topk_indices]).shape[0]
 
             train_vars["mention_loss"] = mention_loss

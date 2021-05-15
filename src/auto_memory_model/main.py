@@ -30,7 +30,9 @@ def main():
 
     parser.add_argument(
         '-dataset', default='joint_lop', type=str,
-        choices=['all', 'joint_lop', 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl', 'cd2cr'])
+        choices=['all', 'joint_lop', 'joint_op',
+                 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl', 'cd2cr',
+                 'wsc', 'gap'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -83,7 +85,7 @@ def main():
                         help='Number of litbank training docs.')
     parser.add_argument('-num_ontonotes_docs', default=None, type=int,
                         help='Number of ontonotes training docs.')
-    parser.add_argument('-num_preco_docs', default=2500, type=int,
+    parser.add_argument('-num_preco_docs', default=None, type=int,
                         help='Number of preco training docs.')
     parser.add_argument('-num_train_docs', default=None, type=int,
                         help='Number of training docs.')
@@ -97,10 +99,12 @@ def main():
                         help='Label Smoothing')
     parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
                         help='Mention loss computed over topk or all mentions.')
+    parser.add_argument('-normalize_loss', default=False, action="store_true",
+                        help='Normalize loss')
     parser.add_argument('-max_evals',
                         help='Maximum number of evals', default=25, type=int)
-    parser.add_argument('-patience',
-                        help='Maximum evaluations without improvement', default=5, type=int)
+    parser.add_argument('-patience', default=5, type=int,
+                        help='Maximum evaluations without improvement')
     parser.add_argument('-seed', default=0,
                         help='Random seed to get different runs', type=int)
     parser.add_argument('-max_gradient_norm',
@@ -109,6 +113,8 @@ def main():
                         default=3e-4, type=float)
     parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
                         default=1e-5, type=float)
+    parser.add_argument('-lr_decay', default='linear', type=str, choices=['inv', 'linear'],
+                        help="Decay mechanism used for learning rate decay")
     parser.add_argument('-eval_per_k_steps', default=None, type=int, help='Evaluate on dev set per k steps')
     parser.add_argument('-update_frequency', default=500, type=int, help='Update freq')
     parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
@@ -117,6 +123,7 @@ def main():
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",
                         default=None, type=str)
+    parser.add_argument('-slurm_time', help="Time on slurm jobs", default=235 * 60, type=float)
 
     args = parser.parse_args()
 
@@ -126,9 +133,9 @@ def main():
     imp_opts = ['model_size', 'max_segment_len',  # Encoder params
                 'ment_emb', 'max_span_width', 'top_span_ratio',  # Mention model
                 'mem_type', 'entity_rep', 'mlp_size',  # Memory params
-                'dropout_rate', 'seed', 'init_lr', 'max_evals',
-                'label_smoothing_wt', 'ment_loss',  # weights & sampling
-                'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs',
+                'dropout_rate', 'seed', 'init_lr', 'lr_decay', 'max_evals',
+                'label_smoothing_wt', 'ment_loss', 'normalize_loss',
+                'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs', 'num_train_docs',
                 'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data',
                 'remove_singletons', 'add_speaker_tokens']
 
@@ -139,7 +146,7 @@ def main():
             changed_opts[attr] = dict_args[attr]
 
     if args.singleton_file is not None and path.exists(args.singleton_file):
-        changed_opts['singleton'] = path.basename(args.singleton_file)
+        changed_opts['singleton_file'] = path.basename(args.singleton_file)
 
     if args.dataset == 'litbank':
         # Cross-validation split is only important for litbank
@@ -147,7 +154,7 @@ def main():
 
     for key, val in vars(args).items():
         if key in changed_opts:
-            opt_dict[key] = val
+            opt_dict[key] = changed_opts[key]
 
     key_val_pairs = sorted(opt_dict.items())
     str_repr = '_'.join([f'{key}_{val}' for key, val in key_val_pairs])
@@ -180,16 +187,19 @@ def main():
     print("Model directory:", args.model_dir)
 
     data_dir_dict = {
+        'gap': path.join(args.base_data_dir, 'gap/longformer'),
         'ontonotes': path.join(args.base_data_dir, 'ontonotes/independent_longformer'),
+        'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}'),
         'preco': path.join(args.base_data_dir, 'preco/independent_longformer'),
         'wikicoref': path.join(args.base_data_dir, 'wikicoref/independent_longformer'),
         'quizbowl': path.join(args.base_data_dir, 'quizbowl/independent_longformer'),
-        'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}')
+        'wsc': path.join(args.base_data_dir, 'wsc/longformer'),
     }
 
     conll_data_dir = {
         'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
-        'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}')
+        'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}'),
+        'quizbowl': path.join(args.base_data_dir, f'quizbowl/conll')
     }
 
     if args.add_speaker_tokens:
@@ -197,23 +207,26 @@ def main():
 
     if args.data_dir is None:
         if args.dataset == 'all':
-            args.data_dir_dict = data_dir_dict
-            args.conll_data_dir = conll_data_dir
+            dataset_list = list(data_dir_dict.keys())
         elif args.dataset == 'joint_lop':
-            args.data_dir_dict = {}
-            args.conll_data_dir = {}
-            for dataset in ['litbank', 'ontonotes', 'preco']:
-                args.data_dir_dict[dataset] = data_dir_dict[dataset]
-                if dataset in conll_data_dir:
-                    args.conll_data_dir[dataset] = conll_data_dir[dataset]
+            dataset_list = ['litbank', 'ontonotes', 'preco']
+        elif args.dataset == 'joint_op':
+            dataset_list = ['ontonotes', 'preco']
         else:
-            args.data_dir_dict = {args.dataset: data_dir_dict[args.dataset]}
-            args.conll_data_dir = {}
-            if args.dataset in conll_data_dir:
-                args.conll_data_dir[args.dataset] = conll_data_dir[args.dataset]
+            dataset_list = [args.dataset]
+
+        args.data_dir_dict = {}
+        args.conll_data_dir = {}
+
+        for dataset in dataset_list:
+            args.data_dir_dict[dataset] = data_dir_dict[dataset]
+            if dataset in conll_data_dir:
+                args.conll_data_dir[dataset] = conll_data_dir[dataset]
     else:
         args.data_dir_dict = {args.dataset: args.data_dir}
         args.conll_data_dir = {}
+        if args.dataset in conll_data_dir:
+            args.conll_data_dir[args.dataset] = conll_data_dir[args.dataset]
 
     print(args.data_dir_dict)
     print(args.conll_data_dir)

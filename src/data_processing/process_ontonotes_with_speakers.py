@@ -25,6 +25,7 @@ class DocumentState(object):
         self.info = []
         self.segments = []
         self.subtoken_map = []
+        self.orig_subtoken_map = []
         self.segment_subtoken_map = []
         self.sentence_map = []
         self.pronouns = []
@@ -81,12 +82,14 @@ class DocumentState(object):
         num_words = len(flatten(self.segments))
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         assert num_words == len(sentence_map), (num_words, len(sentence_map))
+        assert num_words == len(self.orig_subtoken_map), (num_words, len(self.orig_subtoken_map))
         return {
             "doc_key": self.doc_key,
             "sentences": self.segments,
             "clusters": merged_clusters,
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
+            "orig_subtoken_map": self.orig_subtoken_map,
             "orig_tokens": self.tokens,
         }
 
@@ -149,6 +152,7 @@ def process_speaker(speaker):
 def get_document(document_lines, tokenizer, segment_len, stats):
     document_state = DocumentState(document_lines[0])
     word_idx = -1
+    orig_word_idx = -1
     last_speaker = '-'
     for line in document_lines[1]:
         row = line.split()
@@ -173,10 +177,12 @@ def get_document(document_lines, tokenizer, segment_len, stats):
                     document_state.info.append(None)
                     document_state.sentence_end.append(False)
                     document_state.subtoken_map.append(word_idx)
+                    document_state.orig_subtoken_map.append(-1)
 
                 last_speaker = speaker
 
             word_idx += 1
+            orig_word_idx += 1
             word = normalize_word(row[3])
             subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
             document_state.tokens.append(word)
@@ -188,6 +194,7 @@ def get_document(document_lines, tokenizer, segment_len, stats):
                 document_state.info.append(info)
                 document_state.sentence_end.append(False)
                 document_state.subtoken_map.append(word_idx)
+                document_state.orig_subtoken_map.append(orig_word_idx)
         else:
             document_state.sentence_end[-1] = True
 

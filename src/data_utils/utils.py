@@ -40,6 +40,8 @@ def load_dataset(data_dir, max_segment_len=2048, dataset='litbank',
 
 def load_eval_dataset(data_dir, dataset='quizbowl', max_segment_len=2048, num_eval_docs=None, split="test"):
     jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
+    if not path.exists(jsonl_file):
+        jsonl_file = path.join(data_dir, "{}.jsonlines".format(split))
     split_data = []
     with open(jsonl_file) as f:
         for line in f:
@@ -55,6 +57,10 @@ def load_eval_dataset(data_dir, dataset='quizbowl', max_segment_len=2048, num_ev
         assert (len(split_data) == 30)
     elif dataset == 'litbank':
         assert (len(split_data) == 10)
+    elif dataset == 'wsc':
+        assert (len(split_data) == 271)
+    elif dataset == 'gap':
+        assert (len(split_data) == 4000)
     else:
         pass
 

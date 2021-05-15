@@ -1,3 +1,5 @@
+import collections
+
 import sys
 from os import path
 import os
@@ -13,13 +15,14 @@ from transformers import get_linear_schedule_with_warmup, AdamW
 from auto_memory_model.utils import action_sequences_to_clusters
 from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
-from coref_utils.utils import get_mention_to_cluster
+from coref_utils.utils import get_mention_to_cluster, get_cluster_sets
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller import BaseController
 from auto_memory_model.controller.utils import pick_controller
 from data_utils.tensorize_dataset import TensorizeDataset
 from auto_memory_model.constants import CANONICAL_CLUSTER_THRESHOLD
+from pytorch_utils.optimization_utils import get_inverse_square_root_decay
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
@@ -40,7 +43,7 @@ class Experiment:
         if self.dataset == 'litbank':
             self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
 
-        self.orig_data_map, self.data_iter_map = {}, {}
+        self.orig_data_map, self.data_iter_map, self.num_train_docs_map = {}, {}, {}
         # Load raw data
         self.load_data()
 
@@ -80,14 +83,12 @@ class Experiment:
 
     def load_data(self):
         for dataset, data_dir in self.data_dir_dict.items():
-            num_train_docs = self.num_train_docs
-            if num_train_docs is None:
-                if dataset == 'ontonotes':
-                    num_train_docs = self.num_ontonotes_docs
-                elif dataset == 'preco':
-                    num_train_docs = self.num_preco_docs
-                elif dataset == 'litbank':
-                    num_train_docs = self.num_litbank_docs
+            if dataset == 'ontonotes':
+                self.num_train_docs_map[dataset] = self.num_ontonotes_docs
+            elif dataset == 'preco':
+                self.num_train_docs_map[dataset] = self.num_preco_docs
+            elif dataset == 'litbank':
+                self.num_train_docs_map[dataset] = self.num_litbank_docs
 
             if self.eval_model:
                 self.orig_data_map[dataset] = load_eval_dataset(
@@ -95,8 +96,9 @@ class Experiment:
                     num_eval_docs=self.num_eval_docs)
             else:
                 self.orig_data_map[dataset] = load_dataset(
-                    data_dir, dataset=dataset, num_eval_docs=self.num_eval_docs,
-                    num_train_docs=num_train_docs, skip_dialog_data=self.skip_dialog_data)
+                    data_dir, dataset=dataset,
+                    num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs,
+                    singleton_file=self.singleton_file, skip_dialog_data=self.skip_dialog_data)
 
     def process_data(self):
         if self.eval_model:
@@ -149,6 +151,9 @@ class Experiment:
         self.model = pick_controller(device=self.device, **supplied_args).to(self.device)
         self.model.load_state_dict(checkpoint['model'], strict=True)
         print(checkpoint['model_args'])
+
+        self.train_info = checkpoint['train_info']
+
         # Finally evaluate model
         if self.eval_max_ents is not None:
             self.model.set_max_ents(self.eval_max_ents)
@@ -171,9 +176,13 @@ class Experiment:
 
         self.scaler = torch.cuda.amp.GradScaler()
         self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
-        # No warmup for model params
-        self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-            self.optimizer['mem'], num_warmup_steps=0, num_training_steps=self.num_training_steps)
+
+        if self.lr_decay == 'inv':
+            self.optim_scheduler['mem'] = get_inverse_square_root_decay(self.optimizer['mem'], num_warmup_steps=0)
+        else:
+            # No warmup for model params
+            self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
+                self.optimizer['mem'], num_warmup_steps=0, num_training_steps=self.num_training_steps)
 
         if self.fine_tune_lr is not None:
             no_decay = ['bias', 'LayerNorm.weight']
@@ -189,26 +198,35 @@ class Experiment:
 
             self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr, eps=1e-6)
             num_warmup_steps = int(0.1 * self.num_training_steps)
-            self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
-                self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
-                num_training_steps=self.num_training_steps)
+            if self.lr_decay == 'inv':
+                self.optim_scheduler['doc'] = get_inverse_square_root_decay(
+                    self.optimizer['doc'], num_warmup_steps=num_warmup_steps)
+            else:
+                self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
+                    self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
+                    num_training_steps=self.num_training_steps)
 
     def train(self):
         """Train model"""
         model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
         model.train()
 
+        start_time = time.time()
+        eval_time = {'total_time': 0, 'num_evals': 0}
         while True:
             logger.info("Steps done %d" % (self.train_info['global_steps']))
-            start_time = time.time()
 
             train_data = []
             for dataset, dataset_train_data in self.data_iter_map['train'].items():
-                train_data += dataset_train_data
+                np.random.shuffle(dataset_train_data)
+                if self.num_train_docs_map.get(dataset, None) is not None:
+                    train_data += dataset_train_data[:self.num_train_docs_map[dataset]]
+                else:
+                    train_data += dataset_train_data
             np.random.shuffle(train_data)
             if self.num_train_docs:
                 train_data = train_data[:self.num_train_docs]
-
+            logger.info("Per epoch training steps: %d" % len(train_data))
             encoder_params, task_params = model.get_params()
 
             for cur_example in train_data:
@@ -250,13 +268,29 @@ class Experiment:
                     fscore = self.periodic_model_eval()
                     # Get elapsed time
                     elapsed_time = time.time() - start_time
+
+                    start_time = time.time()
                     logger.info("Steps: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
                                 % (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
-
+                    # Check stopping criteria
                     if self.train_info['num_stuck_evals'] >= self.patience:
                         return
                     if self.train_info['global_steps'] >= self.num_training_steps:
                         return
+
+                    if self.slurm_id:
+                        # Check if enough time to run another eval
+                        eval_time['total_time'] += elapsed_time
+                        eval_time['num_evals'] += 1
+
+                        avg_eval_time = eval_time['total_time']/eval_time['num_evals']
+                        rem_time = self.slurm_time - eval_time['total_time']
+                        logging.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
+                                     % (avg_eval_time/60, rem_time/60))
+
+                        if rem_time < avg_eval_time:
+                            logging.info('Canceling job as not much time left')
+                            sys.exit()
 
             logger.handlers[0].flush()
 
@@ -271,7 +305,7 @@ class Experiment:
         logger.info(fscore_dict)
         # Calculate Mean F-score
         fscore = sum([fscore_dict[dataset] for dataset in fscore_dict])/len(fscore_dict)
-
+        logger.info('F1: %.1f, Max F1: %.1f' % (fscore, self.train_info['val_perf']))
         # Update model if dev performance improves
         if fscore > self.train_info['val_perf']:
             self.train_info['num_stuck_evals'] = 0
@@ -368,15 +402,15 @@ class Experiment:
                 result_dict['fscore'] = round(fscore, 1)
                 logger.info("F-score: %.1f %s" % (fscore, perf_str))
 
-                # (1) Only use CoNLL evaluator script for final evaluation
-                # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
-                use_conll = (cluster_threshold == self.canonical_cluster_threshold)
-                # (3) Check if the scorer and CoNLL annotation directory exist
-                path_exists_bool = False
-                if self.conll_scorer is not None and self.conll_data_dir is not None:
-                    path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
-
                 try:
+                    # (1) Only use CoNLL evaluator script for final evaluation
+                    # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
+                    use_conll = (cluster_threshold == self.canonical_cluster_threshold[dataset])
+                    # (3) Check if the scorer and CoNLL annotation directory exist
+                    path_exists_bool = False
+                    if self.conll_scorer is not None and self.conll_data_dir is not None \
+                            and dataset in self.conll_data_dir:
+                        path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
                     if final_eval and use_conll and path_exists_bool:
                         gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
                         prediction_file = path.join(self.model_dir, f'{split}.conll')
@@ -406,13 +440,102 @@ class Experiment:
 
         return result_dict
 
+    def targeted_eval(self, split="test", dataset="wsc"):
+        model = self.model
+        model.eval()
+        use_gold_ments = model.use_gold_ments
+        if dataset == 'wsc':
+            model.use_gold_ments = True
+
+        counter = collections.Counter()
+
+        with torch.no_grad():
+            dataset_dir = path.join(self.model_dir, dataset)
+            if not path.exists(dataset_dir):
+                os.makedirs(dataset_dir)
+            log_file = path.join(dataset_dir, split + ".log.jsonl")
+            with open(log_file, 'w') as f:
+                # Capture the auxiliary action accuracy
+                logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
+                for example in self.data_iter_map[split][dataset]:
+                    action_list, pred_mentions, gt_actions, mention_scores = model(example)
+                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+
+                    if dataset == 'wsc':
+                        set_predicted_clusters = sorted(get_cluster_sets(predicted_clusters), key=lambda x: len(x))
+                        set_gold_clusters = sorted(get_cluster_sets(example["clusters"]), key=lambda x: len(x))
+                        if set_predicted_clusters == set_gold_clusters:
+                            counter['corr'] += 1
+                        counter['total'] += 1
+                    elif dataset == 'gap':
+                        predicted_clusters, mention_to_predicted = \
+                            get_mention_to_cluster(predicted_clusters, threshold=1)
+                        gold_clusters, mention_to_gold = get_mention_to_cluster(example["clusters"], threshold=1)
+
+                        gold_cluster_ids = set()
+                        predicted_cluster_ids = set()
+                        mentions_found = True
+                        for mention in mention_to_gold:
+                            gold_cluster_ids.add(mention_to_gold[mention])
+                            if mention in mention_to_predicted:
+                                predicted_cluster_ids.add(mention_to_predicted[mention])
+                            else:
+                                mentions_found = False
+                                break
+
+                        if mentions_found:
+                            if len(gold_clusters) == 1 and len(predicted_clusters) == 1:
+                                counter['true_positive'] += 1
+                            elif len(gold_clusters) == 1 and len(predicted_clusters) == 2:
+                                counter['false_negative'] += 1
+                            elif len(gold_clusters) == 2 and len(predicted_clusters) == 2:
+                                counter['true_negative'] += 1
+                            elif len(gold_clusters) == 2 and len(predicted_clusters) == 1:
+                                counter['false_positive'] += 1
+                        else:
+                            counter['false_negative'] += 1
+
+                    log_example = dict(example)
+                    log_example["predicted_clusters"] = predicted_clusters
+
+                    del log_example["tensorized_sent"]
+                    for key in list(log_example.keys()):
+                        if isinstance(log_example[key], torch.Tensor):
+                            del log_example[key]
+
+                    # print(log_example)
+                    f.write(json.dumps(log_example) + "\n")
+
+        logger.info(log_file)
+        # Restore use of gold mentions
+        model.use_gold_ments = use_gold_ments
+
+        result_dict = {'fscore': 0.0}
+        if dataset == 'wsc':
+            result_dict = {'fscore': counter['corr']/counter['total']}
+            logger.info('Accuracy: %.2f' % (result_dict['fscore'] * 100))
+        elif dataset == 'gap':
+            prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])
+            recall = counter['true_positive'] / (counter['true_positive'] + counter['false_negative'])
+
+            result_dict['prec'], result_dict['recall'] = prec, recall
+            if prec and recall:
+                result_dict = {'fscore': (2 * prec * recall)/(prec + recall)}
+
+            logger.info('F-score: %.2f' % (result_dict['fscore'] * 100))
+
+        return result_dict
+
     def perform_final_eval(self):
         """Evaluate the model on train, dev, and test"""
-        base_output_dict = {'model_dir': self.model_dir}
+        base_output_dict = {'model_dir': path.normpath(self.model_dir)}
         for key, val in self.model_args.items():
             base_output_dict[key] = val
 
         # for split in ['test', 'dev', 'train']:
+        perf_summary = {'model_dir': path.normpath(self.model_dir), 'best_perf': self.train_info['val_perf']}
+        logging.info("Validation performance: %.2f" % self.train_info['val_perf'])
+
         for split in ['test']:
             logger.info('\n')
             logger.info('%s' % split.capitalize())
@@ -425,17 +548,31 @@ class Experiment:
 
                 logger.info('\n')
                 logger.info('%s\n' % dataset.capitalize())
-                result_dict = self.evaluate_model(
-                    split, dataset=dataset, final_eval=True,
-                    cluster_threshold=self.canonical_cluster_threshold[dataset])
+                if dataset in ['wsc', 'gap']:
+                    result_dict = self.targeted_eval(split, dataset=dataset)
+                else:
+                    result_dict = self.evaluate_model(split, dataset=dataset, final_eval=True,
+                                                      cluster_threshold=self.canonical_cluster_threshold[dataset])
 
                 output_dict = dict(base_output_dict)
                 output_dict[f"{dataset}_{split}"] = result_dict
+                perf_summary[f"{dataset}_{split}"] = result_dict['fscore']
 
                 json.dump(output_dict, open(perf_file, 'w'), indent=2)
 
                 logging.info("Final performance summary at %s" % perf_file)
                 sys.stdout.flush()
+
+        summary_file = path.join(self.model_dir, 'perf.json')
+        if self.slurm_id:
+            parent_dir = path.dirname(path.normpath(self.model_dir))
+            perf_dir = path.join(parent_dir, "perf")
+            if not path.exists(perf_dir):
+                os.makedirs(perf_dir)
+            summary_file = path.join(perf_dir, self.slurm_id + ".json")
+
+        json.dump(perf_summary, open(summary_file, 'w'), indent=2)
+        logger.info("Performance summary file: %s" % summary_file)
 
     def load_model(self, location, model_type='last'):
         checkpoint = torch.load(location, map_location='cpu')
