@@ -30,9 +30,9 @@ def main():
 
     parser.add_argument(
         '-dataset', default='joint_lop', type=str,
-        choices=['all', 'joint_lop', 'joint_op',
+        choices=['all', 'joint_clop', 'joint_lop', 'joint_op',
                  'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl', 'cd2cr',
-                 'wsc', 'gap'])
+                 'wsc', 'gap', 'character_identification'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
@@ -123,7 +123,7 @@ def main():
                         default=False, action="store_true")
     parser.add_argument('-slurm_id', help="Slurm ID",
                         default=None, type=str)
-    parser.add_argument('-slurm_time', help="Time on slurm jobs", default=235 * 60, type=float)
+    parser.add_argument('-slurm_time', help="Time on slurm jobs", default=238 * 60, type=float)
 
     args = parser.parse_args()
 
@@ -179,7 +179,7 @@ def main():
             best_model_dir = args.model_dir
         args.best_model_dir = best_model_dir
         import torch
-        checkpoint = torch.load(path.join(args.best_model_dir, "model.pth"))
+        checkpoint = torch.load(path.join(args.best_model_dir, "model.pth"), map_location='cpu')
         model_args = checkpoint['model_args']
         if 'add_speaker_tokens' in model_args:
             args.add_speaker_tokens = model_args['add_speaker_tokens']
@@ -187,6 +187,7 @@ def main():
     print("Model directory:", args.model_dir)
 
     data_dir_dict = {
+        'character_identification': path.join(args.base_data_dir, 'character_identification/longformer'),
         'gap': path.join(args.base_data_dir, 'gap/longformer'),
         'ontonotes': path.join(args.base_data_dir, 'ontonotes/independent_longformer'),
         'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}'),
@@ -204,10 +205,14 @@ def main():
 
     if args.add_speaker_tokens:
         data_dir_dict['ontonotes'] = path.join(args.base_data_dir, 'ontonotes/independent_longformer_speaker')
+        data_dir_dict['character_identification'] = path.join(
+            args.base_data_dir, 'character_identification/longformer_speaker')
 
     if args.data_dir is None:
         if args.dataset == 'all':
             dataset_list = list(data_dir_dict.keys())
+        elif args.dataset == 'joint_clop':
+            dataset_list = ['character_identification', 'litbank', 'ontonotes', 'preco']
         elif args.dataset == 'joint_lop':
             dataset_list = ['litbank', 'ontonotes', 'preco']
         elif args.dataset == 'joint_op':

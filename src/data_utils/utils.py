@@ -60,7 +60,9 @@ def load_eval_dataset(data_dir, dataset='quizbowl', max_segment_len=2048, num_ev
     elif dataset == 'wsc':
         assert (len(split_data) == 271)
     elif dataset == 'gap':
-        assert (len(split_data) == 4000)
+        assert (len(split_data) == 2000)
+    elif dataset == 'character_identification':
+        assert (len(split_data) == 192)
     else:
         pass
 

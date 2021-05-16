@@ -20,7 +20,7 @@ class ControllerPredInvalid(BaseController):
         self.memory_net = MemoryPredInvalid(
             mem_type=mem_type, max_ents=self.max_ents,
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
-            drop_module=self.drop_module, num_feats=self.num_feats, **kwargs)
+            drop_module=self.drop_module, num_feats=self.num_feats, **kwargs).to(self.device)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
@@ -104,6 +104,11 @@ class ControllerPredInvalid(BaseController):
                 "sent_len_list": [instance["sent_len_list"][idx]],
                 "clusters": clusters,
             }
+
+            # Pass along other metadata
+            for key in instance:
+                if key not in cur_example:
+                    cur_example[key] = instance[key]
 
             cur_pred_mentions, cur_mention_emb_list, cur_mention_scores = self.get_mention_embs(cur_example)[:3]
             if cur_pred_mentions is None:

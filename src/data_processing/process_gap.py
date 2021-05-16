@@ -24,13 +24,15 @@ class DocumentState:
         self.token_end = []
         self.tokens = []
         self.subtokens = []
-        self.info = []
         self.segments = []
         self.subtoken_map = []
         self.sentence_map = []
-        self.pronouns = []
-        self.clusters = []
         self.segment_info = []
+        self.pronoun_span = []
+        self.a_span = []
+        self.b_span = []
+        self.a_label = 0
+        self.b_label = 0
 
     def finalize(self):
         # print(all_mentions)
@@ -41,9 +43,13 @@ class DocumentState:
             "doc_key": self.doc_key,
             "sentences": self.segments,
             "str_doc": self.tokens,
-            "clusters": self.clusters,
             'sentence_map': sentence_map,
             "subtoken_map": self.subtoken_map,
+            "pronoun_span": self.pronoun_span,
+            "a_span": self.a_span,
+            "b_span": self.b_span,
+            "a_label": self.a_label,
+            "b_label": self.b_label,
         }
 
 
@@ -54,8 +60,6 @@ def search_span(word_list, token_list):
             if token1 != token2:
                 match = -1
                 break
-
-        #         print(word_list, token_list, match)
 
         if match == -1:
             continue
@@ -82,9 +86,9 @@ def minimize_split(input_dir, output_dir, split="test"):
                     span2, span2_offset, coref2 = line.strip().split('\t')[:10]
 
             pronoun_offset, span1_offset, span2_offset = int(pronoun_offset), int(span1_offset), int(span2_offset)
-            pronoun_boundary = (pronoun_offset, pronoun_offset + len(pronoun), 'pronoun')
-            span1_boundary = (span1_offset, span1_offset + len(span1), 'A')
-            span2_boundary = (span2_offset, span2_offset + len(span2), 'B')
+            pronoun_boundary = (pronoun_offset, pronoun_offset + len(pronoun), 'pronoun', None)
+            span1_boundary = (span1_offset, span1_offset + len(span1), 'a', coref1 == 'TRUE')
+            span2_boundary = (span2_offset, span2_offset + len(span2), 'b', coref2 == 'TRUE')
 
             span_boundaries = sorted([pronoun_boundary, span1_boundary, span2_boundary], key=lambda x: x[0])
             text_start = 0
@@ -99,54 +103,46 @@ def minimize_split(input_dir, output_dir, split="test"):
 
             doc_token_list = []
             prefix_len = []
-            spans = []
+            tokenized_spans = []
             for idx, intermediate_span in enumerate(text_spans):
                 prefix_len.append(len(doc_token_list))
                 span_tokens = tokenizer.tokenize(intermediate_span)
                 if idx % 2 == 1:
-                    spans.append([prefix_len[-1], prefix_len[-1] + len(span_tokens) - 1])
+                    tokenized_spans.append([prefix_len[-1], prefix_len[-1] + len(span_tokens) - 1])
                 doc_token_list.extend(tokenizer.convert_tokens_to_ids(span_tokens))
 
+            label_to_span = {}
+            label_to_coref_label = {}
+            for ((_, _, label, coref_label), tokenized_boundary) in zip(span_boundaries, tokenized_spans):
+                label_to_span[label] = tokenized_boundary
+                label_to_coref_label[label] = coref_label
 
-            #     #             doc.extend(tokenizer.tokenize(intermediate_span))
-            #
-            # #
-            # # for span_boundary, coref_label in zip([span1_boundary, span2_boundary], [coref1, coref2]):
-            # #     boundaries = sorted([pronoun_boundary, span_boundary], key=lambda x: x[0])
-            # #
-            # #     first_span = text[0: boundaries[0][0]].strip()
-            # #     second_span = text[boundaries[0][0]: boundaries[0][1]].strip()
-            # #     third_span = text[boundaries[0][1]: boundaries[1][0]].strip()
-            # #     fourth_span = text[boundaries[1][0]: boundaries[1][1]].strip()
-            # #     fifth_span = text[boundaries[1][1]:].strip()
-            #
-            #     doc_token_list = []
-            #     prefix_len = []
-            #     spans = []
-            #     for idx, intermediate_span in enumerate([first_span, second_span, third_span, fourth_span, fifth_span]):
-            #         prefix_len.append(len(doc_token_list))
-            #         span_tokens = tokenizer.tokenize(intermediate_span)
-            #         if idx == 1 or idx == 3:
-            #             spans.append([prefix_len[-1], prefix_len[-1] + len(span_tokens) - 1])
-            #
-            #         #             doc.extend(span_tokens)
-            #         doc_token_list.extend(tokenizer.convert_tokens_to_ids(span_tokens))
-            #     #             doc.extend(tokenizer.tokenize(intermediate_span))
-            #
-            #     if coref_label == 'TRUE':
-            #         clusters = [[spans[0], spans[1]]]
-            #     else:
-            #         clusters = [[spans[0]], [spans[1]]]
+            document = DocumentState(doc_key.strip())
+            document.tokens = tokenizer.convert_ids_to_tokens(doc_token_list)
+            print(document.tokens)
+            print(text)
+            print(label_to_span)
+            print(len(doc_token_list))
+            document.segments = [doc_token_list]
+            document.subtoken_map = list(range(len(doc_token_list)))
+            document.pronoun_span = label_to_span['pronoun']
+            document.a_span = label_to_span['a']
+            document.b_span = label_to_span['b']
 
-                document = DocumentState(doc_key.strip())
-                document.clusters = clusters
-                document.tokens = tokenizer.convert_ids_to_tokens(doc_token_list)
-                document.segments = [doc_token_list]
-                document.subtoken_map = list(range(len(doc_token_list)))
+            document.a_label = label_to_coref_label['a']
+            document.b_label = label_to_coref_label['b']
 
-                doc_dict = document.finalize()
-                instances_processed += 1
-                writer_g.write(json.dumps(doc_dict) + "\n")
+            # print(tokenizer.convert_tokens_to_string(
+            #     document.tokens[document.pronoun_span[0]: document.pronoun_span[1] + 1]))
+            # print(tokenizer.convert_tokens_to_string(
+            #     document.tokens[document.a_span[0]: document.a_span[1] + 1]))
+            # print(tokenizer.convert_tokens_to_string(
+            #     document.tokens[document.b_span[0]: document.b_span[1] + 1]))
+
+            doc_dict = document.finalize()
+            instances_processed += 1
+            # break
+            writer_g.write(json.dumps(doc_dict) + "\n")
 
     print("Number of instances processed:", instances_processed)
     print(output_path)

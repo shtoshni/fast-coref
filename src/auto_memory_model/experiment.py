@@ -15,7 +15,7 @@ from transformers import get_linear_schedule_with_warmup, AdamW
 from auto_memory_model.utils import action_sequences_to_clusters
 from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
-from coref_utils.utils import get_mention_to_cluster, get_cluster_sets
+from coref_utils.utils import get_mention_to_cluster, get_cluster_sets, is_aligned
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller import BaseController
@@ -116,7 +116,7 @@ class Experiment:
 
     def setup_training(self):
         self.model = pick_controller(
-            device=self.device, finetune=self.finetune, **self.model_args).to(self.device)
+            device=self.device, finetune=self.finetune, **self.model_args)  # .to(self.device)
 
         if self.eval_per_k_steps is None:
             per_eval_steps = sum([len(self.orig_data_map[dataset]['train']) for dataset in self.orig_data_map])
@@ -144,13 +144,14 @@ class Experiment:
         return True
 
     def setup_eval(self):
-        checkpoint = torch.load(self.best_model_path, map_location=self.device)
+        checkpoint = torch.load(self.best_model_path, map_location='cpu')
         logger.info("Loading best model after steps: %d" % checkpoint['train_info']['global_steps'])
         supplied_args = dict(self.model_args)
         supplied_args.update(checkpoint['model_args'])
-        self.model = pick_controller(device=self.device, **supplied_args).to(self.device)
+        self.model = pick_controller(device=self.device, **supplied_args)
         self.model.load_state_dict(checkpoint['model'], strict=True)
         print(checkpoint['model_args'])
+        sys.stdout.flush()
 
         self.train_info = checkpoint['train_info']
 
@@ -413,7 +414,7 @@ class Experiment:
                         path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
                     if final_eval and use_conll and path_exists_bool:
                         gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
-                        prediction_file = path.join(self.model_dir, f'{split}.conll')
+                        prediction_file = path.join(dataset_dir, f'{split}.conll')
                         conll_results = evaluate_conll(
                             self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
@@ -429,6 +430,7 @@ class Experiment:
                         logger.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
                                     % (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"],
                                         conll_results['ceafe']["f"]))
+                        logger.info("Prediction file: %s" % prediction_file)
                 except AttributeError:
                     pass
 
@@ -461,6 +463,12 @@ class Experiment:
                     action_list, pred_mentions, gt_actions, mention_scores = model(example)
                     predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
 
+                    log_example = dict(example)
+                    del log_example["tensorized_sent"]
+                    for key in list(log_example.keys()):
+                        if isinstance(log_example[key], torch.Tensor):
+                            del log_example[key]
+
                     if dataset == 'wsc':
                         set_predicted_clusters = sorted(get_cluster_sets(predicted_clusters), key=lambda x: len(x))
                         set_gold_clusters = sorted(get_cluster_sets(example["clusters"]), key=lambda x: len(x))
@@ -470,38 +478,35 @@ class Experiment:
                     elif dataset == 'gap':
                         predicted_clusters, mention_to_predicted = \
                             get_mention_to_cluster(predicted_clusters, threshold=1)
-                        gold_clusters, mention_to_gold = get_mention_to_cluster(example["clusters"], threshold=1)
 
-                        gold_cluster_ids = set()
-                        predicted_cluster_ids = set()
-                        mentions_found = True
-                        for mention in mention_to_gold:
-                            gold_cluster_ids.add(mention_to_gold[mention])
-                            if mention in mention_to_predicted:
-                                predicted_cluster_ids.add(mention_to_predicted[mention])
-                            else:
-                                mentions_found = False
-                                break
+                        pron_span = tuple(example['pronoun_span'])
+                        a_pred, b_pred = False, False
 
-                        if mentions_found:
-                            if len(gold_clusters) == 1 and len(predicted_clusters) == 1:
+                        if pron_span in mention_to_predicted:
+                            pron_cluster = mention_to_predicted[pron_span]
+                            for span in pron_cluster:
+                                a_aligned = is_aligned(span, tuple(example['a_span']))
+                                b_aligned = is_aligned(span, tuple(example['b_span']))
+
+                                if a_aligned:
+                                    a_pred = True
+                                if b_aligned:
+                                    b_pred = True
+
+                        for gt, pred in zip([example['a_label'], example['b_label']], [a_pred, b_pred]):
+                            if gt and pred:
                                 counter['true_positive'] += 1
-                            elif len(gold_clusters) == 1 and len(predicted_clusters) == 2:
+                            elif gt and (not pred):
                                 counter['false_negative'] += 1
-                            elif len(gold_clusters) == 2 and len(predicted_clusters) == 2:
+                            elif (not gt) and (not pred):
                                 counter['true_negative'] += 1
-                            elif len(gold_clusters) == 2 and len(predicted_clusters) == 1:
+                            else:
                                 counter['false_positive'] += 1
-                        else:
-                            counter['false_negative'] += 1
 
-                    log_example = dict(example)
+                        log_example["a_pred"] = a_pred
+                        log_example["b_pred"] = b_pred
+
                     log_example["predicted_clusters"] = predicted_clusters
-
-                    del log_example["tensorized_sent"]
-                    for key in list(log_example.keys()):
-                        if isinstance(log_example[key], torch.Tensor):
-                            del log_example[key]
 
                     # print(log_example)
                     f.write(json.dumps(log_example) + "\n")
@@ -512,17 +517,17 @@ class Experiment:
 
         result_dict = {'fscore': 0.0}
         if dataset == 'wsc':
-            result_dict = {'fscore': counter['corr']/counter['total']}
-            logger.info('Accuracy: %.2f' % (result_dict['fscore'] * 100))
+            result_dict = {'fscore': (counter['corr'] * 100)/counter['total']}
+            logger.info('Accuracy: %.1f' % result_dict['fscore'])
         elif dataset == 'gap':
             prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])
             recall = counter['true_positive'] / (counter['true_positive'] + counter['false_negative'])
 
-            result_dict['prec'], result_dict['recall'] = prec, recall
+            result_dict['prec'], result_dict['recall'] = prec * 100, recall * 1000
             if prec and recall:
-                result_dict = {'fscore': (2 * prec * recall)/(prec + recall)}
+                result_dict = {'fscore': (2 * prec * recall * 100)/(prec + recall)}
 
-            logger.info('F-score: %.2f' % (result_dict['fscore'] * 100))
+            logger.info('F-score: %.1f' % result_dict['fscore'])
 
         return result_dict
 
@@ -534,7 +539,7 @@ class Experiment:
 
         # for split in ['test', 'dev', 'train']:
         perf_summary = {'model_dir': path.normpath(self.model_dir), 'best_perf': self.train_info['val_perf']}
-        logging.info("Validation performance: %.2f" % self.train_info['val_perf'])
+        logging.info("Validation performance: %.1f" % self.train_info['val_perf'])
 
         for split in ['test']:
             logger.info('\n')

@@ -19,7 +19,7 @@ class TensorizeDataset:
 
     def tensorize_instance_independent(self, instance, training=False):
         sentences = instance["sentences"]
-        clusters = instance["clusters"]
+        clusters = instance.get("clusters", [])
         sentence_map = instance["sentence_map"]
         subtoken_map = instance["subtoken_map"]
 
@@ -59,6 +59,11 @@ class TensorizeDataset:
                        "subtoken_map": subtoken_map,
                        "sentence_map": torch.tensor(sentence_map, device=self.device),
                        }
+
+        # Pass along other metadata
+        for key in instance:
+            if key not in output_dict:
+                output_dict[key] = instance[key]
 
         if self.remove_singletons:
             output_dict['clusters'] = [cluster for cluster in output_dict['clusters'] if len(cluster) > 1]

@@ -11,13 +11,17 @@ class BaseController(nn.Module):
         super(BaseController, self).__init__()
         self.__dict__.update(kwargs)
 
+        print("Basecontroller:", self.device)
+        if torch.cuda.device_count() > 1:
+            kwargs['device'] = torch.device('cuda:1')
+
         self.doc_encoder = IndependentDocEncoder(**kwargs)
         self.hsize = self.doc_encoder.hsize
         self.drop_module = nn.Dropout(p=dropout_rate)
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 
         if self.ment_emb == 'attn':
-            self.mention_attn = nn.Linear(self.hsize, 1)
+            self.mention_attn = nn.Linear(self.hsize, 1).to(self.device)
 
         self.num_feats = 2
         self.doc_class_to_idx = {}
@@ -26,23 +30,23 @@ class BaseController(nn.Module):
             # Ontonotes - Genre embedding
             if self.doc_class == 'dialog':
                 self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
-                self.genre_embeddings = nn.Embedding(2, self.emb_size)
+                self.genre_embeddings = nn.Embedding(2, self.emb_size).to(self.device)
             else:
                 genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
                 for idx, genre in enumerate(genre_list):
                     self.doc_class_to_idx[genre] = idx
-                self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size)
+                self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size).to(self.device)
 
         # Mention modeling part
-        self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
-        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
+        self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
+        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
         self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
                                hidden_size=self.mlp_size,
                                output_size=1, num_hidden_layers=1, bias=True,
-                               drop_module=self.drop_module)
+                               drop_module=self.drop_module).to(self.device)
         self.span_width_mlp = MLP(input_size=self.emb_size, hidden_size=self.mlp_size,
                                   output_size=1, num_hidden_layers=1, bias=True,
-                                  drop_module=self.drop_module)
+                                  drop_module=self.drop_module).to(self.device)
 
         self.memory_net = None
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
@@ -188,6 +192,8 @@ class BaseController(nn.Module):
 
     def get_mention_embs(self, instance):
         encoded_doc = self.doc_encoder(instance)
+        if torch.cuda.device_count() > 1:
+            encoded_doc = encoded_doc.to(self.device)
         train_vars = None
         if not self.use_gold_ments:
             pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(instance, encoded_doc)

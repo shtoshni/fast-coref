@@ -46,3 +46,11 @@ def remove_singletons(data, key="clusters"):
         data_without_singletons.append(instance)
 
     return data_without_singletons
+
+
+def is_aligned(span1, span2):
+    if span1[0] >= span2[0] and span1[1] <= span2[1]:
+        return True
+    if span2[0] >= span1[0] and span2[1] <= span1[1]:
+        return True
+    return False

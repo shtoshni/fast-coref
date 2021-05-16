@@ -11,6 +11,7 @@ class BaseDocEncoder(nn.Module):
         self.device = device
         self.finetune = finetune
         self.add_speaker_tokens = add_speaker_tokens
+        print("Encoder:", self.device)
 
         gradient_checkpointing = False
         if finetune and self.training:
@@ -24,7 +25,7 @@ class BaseDocEncoder(nn.Module):
 
         self.lm_encoder = LongformerModel.from_pretrained(
             f"allenai/longformer-{model_size}-4096", output_hidden_states=False,
-            gradient_checkpointing=gradient_checkpointing)
+            gradient_checkpointing=gradient_checkpointing).to(device=self.device)
 
         self.tokenizer = AutoTokenizer.from_pretrained('allenai/longformer-large-4096')
         if add_speaker_tokens:
