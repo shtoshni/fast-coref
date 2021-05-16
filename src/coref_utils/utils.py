@@ -30,6 +30,15 @@ def get_ordered_mentions(clusters):
     return all_mentions
 
 
+def get_cluster_sets(clusters):
+    set_clusters = []
+    clusters = [tuple(tuple(mention) for mention in cluster)
+                for cluster in clusters]
+    for cluster in clusters:
+        set_clusters.append(set(cluster))
+    return set_clusters
+
+
 def remove_singletons(data, key="clusters"):
     data_without_singletons = []
     for instance in data:
@@ -37,3 +46,11 @@ def remove_singletons(data, key="clusters"):
         data_without_singletons.append(instance)
 
     return data_without_singletons
+
+
+def is_aligned(span1, span2):
+    if span1[0] >= span2[0] and span1[1] <= span2[1]:
+        return True
+    if span2[0] >= span1[0] and span2[1] <= span1[1]:
+        return True
+    return False

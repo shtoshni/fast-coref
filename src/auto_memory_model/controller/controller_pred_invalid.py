@@ -20,7 +20,7 @@ class ControllerPredInvalid(BaseController):
         self.memory_net = MemoryPredInvalid(
             mem_type=mem_type, max_ents=self.max_ents,
             hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
-            drop_module=self.drop_module, num_feats=self.num_feats, **kwargs)
+            drop_module=self.drop_module, num_feats=self.num_feats, **kwargs).to(self.device)
 
         self.label_smoothing_loss_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=1)
 
@@ -57,7 +57,7 @@ class ControllerPredInvalid(BaseController):
             return []
 
     def forward_training(self, instance):
-        pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(instance, topk=False)
+        pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(instance)
 
         pred_mentions_list = pred_mentions.tolist()
         gt_actions = self.get_actions(pred_mentions_list, instance)
@@ -80,7 +80,7 @@ class ControllerPredInvalid(BaseController):
     def forward(self, instance, teacher_forcing=False):
         metadata = self.get_metadata(instance)
 
-        action_list, pred_mentions_list, gt_actions = [], [], []
+        action_list, pred_mentions_list, gt_actions, mention_scores = [], [], [], []
         last_memory, token_offset = None, 0
 
         for idx in range(0, len(instance["sentences"])):
@@ -105,18 +105,24 @@ class ControllerPredInvalid(BaseController):
                 "clusters": clusters,
             }
 
-            cur_pred_mentions, cur_mention_emb_list = self.get_mention_embs(cur_example, topk=False)[:2]
+            # Pass along other metadata
+            for key in instance:
+                if key not in cur_example:
+                    cur_example[key] = instance[key]
+
+            cur_pred_mentions, cur_mention_emb_list, cur_mention_scores = self.get_mention_embs(cur_example)[:3]
+
             if cur_pred_mentions is None:
                 continue
             cur_pred_mentions = cur_pred_mentions + token_offset
             token_offset += num_tokens
 
-            cur_pred_mentions_list = cur_pred_mentions.tolist()
-            pred_mentions_list.extend(cur_pred_mentions_list)
+            pred_mentions_list.extend(cur_pred_mentions.tolist())
+            mention_scores.extend(cur_mention_scores.tolist())
 
             cur_action_list, last_memory = self.memory_net(
                 cur_pred_mentions, cur_mention_emb_list, metadata, memory_init=last_memory)
             action_list.extend(cur_action_list)
 
         gt_actions = self.get_actions(pred_mentions_list, instance)
-        return action_list, pred_mentions_list, gt_actions
+        return action_list, pred_mentions_list, gt_actions, mention_scores

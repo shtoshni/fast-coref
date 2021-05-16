@@ -11,43 +11,55 @@ class BaseController(nn.Module):
         super(BaseController, self).__init__()
         self.__dict__.update(kwargs)
 
+        print("Basecontroller:", self.device)
+        if torch.cuda.device_count() > 1:
+            kwargs['device'] = torch.device('cuda:1')
+
         self.doc_encoder = IndependentDocEncoder(**kwargs)
         self.hsize = self.doc_encoder.hsize
         self.drop_module = nn.Dropout(p=dropout_rate)
         self.ment_emb_to_size_factor = {'attn': 3, 'endpoint': 2, 'max': 1}
 
         if self.ment_emb == 'attn':
-            self.mention_attn = nn.Linear(self.hsize, 1)
+            self.mention_attn = nn.Linear(self.hsize, 1).to(self.device)
 
         self.num_feats = 2
         self.doc_class_to_idx = {}
-        if self.dataset == 'ontonotes':
-            if self.doc_class is not None:
-                self.num_feats = 3
-                # Ontonotes - Genre embedding
-                if self.doc_class == 'dialog':
-                    self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
-                    self.genre_embeddings = nn.Embedding(2, self.emb_size)
-                else:
-                    genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
-                    for idx, genre in enumerate(genre_list):
-                        self.doc_class_to_idx[genre] = idx
-                    self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size)
+        if self.doc_class is not None:
+            self.num_feats = 3
+            # Ontonotes - Genre embedding
+            if self.doc_class == 'dialog':
+                self.doc_class_to_idx = {'bc': 0, 'tc': 0, 'bn': 1, 'mz': 1, 'nw': 1, 'pt': 1, 'wb': 1}
+                self.genre_embeddings = nn.Embedding(2, self.emb_size).to(self.device)
+            else:
+                genre_list = ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+                for idx, genre in enumerate(genre_list):
+                    self.doc_class_to_idx[genre] = idx
+                self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size).to(self.device)
 
         # Mention modeling part
-        self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
-        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size)
+        self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
+        self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
         self.mention_mlp = MLP(input_size=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
                                hidden_size=self.mlp_size,
                                output_size=1, num_hidden_layers=1, bias=True,
-                               drop_module=self.drop_module)
+                               drop_module=self.drop_module).to(self.device)
         self.span_width_mlp = MLP(input_size=self.emb_size, hidden_size=self.mlp_size,
                                   output_size=1, num_hidden_layers=1, bias=True,
-                                  drop_module=self.drop_module)
+                                  drop_module=self.drop_module).to(self.device)
 
         self.memory_net = None
         self.loss_fn = nn.CrossEntropyLoss(reduction='none', ignore_index=-100)
         self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
+        if self.normalize_loss:
+            self.mention_loss_fn = nn.BCEWithLogitsLoss(reduction='mean')
+            self.loss_fn = nn.CrossEntropyLoss(reduction='mean', ignore_index=-100)
+
+    def get_tokenizer(self):
+        return self.doc_encoder.get_tokenizer()
+
+    def to_add_speaker_tokens(self):
+        return self.doc_encoder.to_add_speaker_tokens()
 
     def get_params(self, named=False):
         encoder_params, mem_params = [], []
@@ -131,7 +143,7 @@ class BaseController(nn.Module):
         filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
         return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-    def get_pred_mentions(self, instance, encoded_doc, topk=False):
+    def get_pred_mentions(self, instance, encoded_doc):
         num_words = encoded_doc.shape[0]
 
         filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, instance)
@@ -153,15 +165,16 @@ class BaseController(nn.Module):
             else:
                 mention_loss = self.mention_loss_fn(mention_logits[topk_indices],
                                                     torch.clamp(filt_gold_mentions[topk_indices], 0, 1))
+
             uniq_cluster_count = torch.unique(filt_gold_mentions[topk_indices]).shape[0]
 
             train_vars["mention_loss"] = mention_loss
             train_vars["uniq_cluster_count"] = uniq_cluster_count
-            if not topk:
+            if not self.use_topk:
                 # Ignore invalid mentions even during training
                 topk_indices = topk_indices[torch.nonzero(filt_gold_mentions[topk_indices], as_tuple=True)[0]]
         else:
-            if topk:
+            if self.use_topk:
                 k = int(self.top_span_ratio * (instance["subtoken_map"][-1] - instance["subtoken_map"][0] + 1))
                 topk_indices = torch.topk(mention_logits, k)[1]
             else:
@@ -177,11 +190,13 @@ class BaseController(nn.Module):
 
         return topk_starts[sorted_indices], topk_ends[sorted_indices], topk_scores[sorted_indices], train_vars
 
-    def get_mention_embs(self, instance, topk=False):
+    def get_mention_embs(self, instance):
         encoded_doc = self.doc_encoder(instance)
+        if torch.cuda.device_count() > 1:
+            encoded_doc = encoded_doc.to(self.device)
         train_vars = None
         if not self.use_gold_ments:
-            pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(instance, encoded_doc, topk=topk)
+            pred_starts, pred_ends, pred_scores, train_vars = self.get_pred_mentions(instance, encoded_doc)
         else:
             mentions = []
             for cluster in instance["clusters"]:
@@ -191,6 +206,7 @@ class BaseController(nn.Module):
                 topk_starts, topk_ends = zip(*mentions)
             else:
                 return None, [], None, {}
+
             topk_starts = torch.tensor(topk_starts, device=self.device)
             topk_ends = torch.tensor(topk_ends, device=self.device)
             # Fake positive score
@@ -244,7 +260,7 @@ class BaseController(nn.Module):
             if doc_class in self.doc_class_to_idx:
                 doc_class_idx = self.doc_class_to_idx[doc_class]
             else:
-                doc_class_idx = self.doc_class_to_idx['nw']
+                doc_class_idx = self.doc_class_to_idx['nw']  # Non-dialog
             return {'genre': self.genre_embeddings(torch.tensor(doc_class_idx, device=self.device))}
         else:
             return {}
