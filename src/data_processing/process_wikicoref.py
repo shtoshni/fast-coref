@@ -138,17 +138,16 @@ def get_document(text_file, xml_file, tokenizer, segment_len):
             span_end = sentence_word_map[word_span_end][1] - 1
             coref_class_to_spans[coref_class].append((span_start, span_end))
 
-            # if (span_start, span_end) in uniq_spans:
-            #     for idx in range(span_start, span_end + 1):
-            #         print(xml_file)
-            #         print(word_span_start, word_span_end)
-            #         print(elem.get('id'))
-            #         print(sentence_word_map[idx][2])
-            # else:
-            #     uniq_spans.add((span_start, span_end))
+    coref_class_list = list(coref_class_to_spans.keys())
+    for coref_class in coref_class_list:
+        if len(coref_class_to_spans[coref_class]) == 1:
+            # print(xml_file)
+            # print(coref_class, coref_class_to_spans[coref_class])
+            span_start, span_end = coref_class_to_spans[coref_class][0]
+            # print(tokenizer.convert_tokens_to_string(document_state.tokens[span_start: span_end + 1]))
+            del coref_class_to_spans[coref_class]
 
     document_state.clusters = list(coref_class_to_spans.values())
-    # print(document_state.clusters)
 
     split_into_segments(document_state, segment_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()

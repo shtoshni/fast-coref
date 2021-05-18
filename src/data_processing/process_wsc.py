@@ -24,16 +24,17 @@ class DocumentState:
         self.token_end = []
         self.tokens = []
         self.subtokens = []
-        self.info = []
         self.segments = []
         self.subtoken_map = []
         self.sentence_map = []
-        self.pronouns = []
-        self.clusters = []
         self.segment_info = []
+        self.pronoun_span = []
+        self.a_span = []
+        self.b_span = []
+        self.a_label = 0
+        self.b_label = 0
 
     def finalize(self):
-        all_mentions = flatten(self.clusters)
         # print(all_mentions)
         num_words = len(flatten(self.segments))
         sentence_map = [0] * num_words
@@ -42,9 +43,13 @@ class DocumentState:
             "doc_key": self.doc_key,
             "sentences": self.segments,
             "str_doc": self.tokens,
-            "clusters": self.clusters,
             'sentence_map': sentence_map,
             "subtoken_map": self.subtoken_map,
+            "pronoun_span": self.pronoun_span,
+            "a_span": self.a_span,
+            "b_span": self.b_span,
+            "a_label": self.a_label,
+            "b_label": self.b_label,
         }
 
 
@@ -55,8 +60,6 @@ def search_span(word_list, token_list):
             if token1 != token2:
                 match = -1
                 break
-
-        #         print(word_list, token_list, match)
 
         if match == -1:
             continue
@@ -85,9 +88,13 @@ def minimize_split(input_dir, output_dir, split="test"):
     correct_answers = []
 
     with open(output_path, 'w') as out_f:
+        num_tokens_list = []
+        ment_len_list = []
+
         for elem in list(root)[:TOTAL_INSTANCES]:
             for children in list(elem.iter('txt1')):
-                prefixes.append(children.text.strip().replace('\n', ' '))
+                prefix = children.text.strip().replace('\n', ' ')
+                prefixes.append(prefix)
 
             for children in list(elem.iter('pron')):
                 pronouns.append(children.text.strip())
@@ -106,6 +113,7 @@ def minimize_split(input_dir, output_dir, split="test"):
             answer2 = answers[idx * 2 + 1]
 
             text = f'{prefix} {pronouns[idx * 2]} {continuations[idx]}'
+
             word_list = tokenizer.tokenize(prefix)
             prefix_idx = len(word_list)
             word_list += tokenizer.tokenize(pronouns[idx * 2])
@@ -120,38 +128,43 @@ def minimize_split(input_dir, output_dir, split="test"):
                     span_tokens = tokenizer.tokenize(span)
                     found = search_span(word_list, span_tokens)
                     if found != -1:
-                        answer_boundaries.append([[found, found + len(span_tokens) - 1]])
+                        answer_boundaries.append([found, found + len(span_tokens) - 1])
                         break
 
                 if found == -1:
                     print(text, answer)
                     not_found_count += 1
 
-            import copy
-            clusters = copy.deepcopy(answer_boundaries)
             if len(answer_boundaries) == 2:
+                document = DocumentState(f'wsc_{idx}')
+                num_tokens_list.append(len(text.split()))
+
+                ment_len_list.extend([1, len(answer1.split()), len(answer2.split())])
+
                 correct_answer = correct_answers[idx]
                 assert (correct_answer in ['A', 'B'])
 
                 if correct_answer == 'A':
-                    cluster_idx = 0
+                    document.a_label = 1
                 else:
-                    cluster_idx = 1
+                    document.b_label = 1
 
-                clusters[cluster_idx].append(pronoun_boundary)
-                clusters[cluster_idx] = sorted(clusters[cluster_idx], key=lambda x: x[0])
-
-                document = DocumentState(f'wsc_{idx}')
-                document.clusters = clusters
                 document.tokens = word_list
                 document.segments = [tokenizer.convert_tokens_to_ids(word_list)]
                 document.subtoken_map = list(range(len(word_list)))
+
+                document.pronoun_span = pronoun_boundary
+                document.a_span = answer_boundaries[0]
+                document.b_span = answer_boundaries[1]
 
                 doc_dict = document.finalize()
                 instances_processed += 1
                 out_f.write(json.dumps(doc_dict) + "\n")
 
     print("Number of instances processed:", instances_processed)
+    import numpy as np
+    print(f"Number of tokens per doc: {np.mean(num_tokens_list):.1f}")
+    print(f"Avg, mention length: {np.mean(ment_len_list):.1f}")
     print(output_path)
 
 

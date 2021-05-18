@@ -1,7 +1,7 @@
 import argparse
 import os
 from os import path
-import hashlib
+import torch
 import logging
 from collections import OrderedDict
 
@@ -178,22 +178,22 @@ def main():
         if not path.exists(best_model_dir):
             best_model_dir = args.model_dir
         args.best_model_dir = best_model_dir
-        import torch
-        checkpoint = torch.load(path.join(args.best_model_dir, "model.pth"), map_location='cpu')
-        model_args = checkpoint['model_args']
-        if 'add_speaker_tokens' in model_args:
-            args.add_speaker_tokens = model_args['add_speaker_tokens']
+        if args.eval_model:
+            checkpoint = torch.load(path.join(args.best_model_dir, "model.pth"), map_location='cpu')
+            model_args = checkpoint['model_args']
+            if 'add_speaker_tokens' in model_args:
+                args.add_speaker_tokens = model_args['add_speaker_tokens']
 
     print("Model directory:", args.model_dir)
 
     data_dir_dict = {
-        'character_identification': path.join(args.base_data_dir, 'character_identification/longformer'),
-        'gap': path.join(args.base_data_dir, 'gap/longformer'),
         'ontonotes': path.join(args.base_data_dir, 'ontonotes/independent_longformer'),
         'litbank': path.join(args.base_data_dir, f'litbank/independent_longformer/{args.cross_val_split}'),
         'preco': path.join(args.base_data_dir, 'preco/independent_longformer'),
+        'character_identification': path.join(args.base_data_dir, 'character_identification/longformer'),
         'wikicoref': path.join(args.base_data_dir, 'wikicoref/independent_longformer'),
         'quizbowl': path.join(args.base_data_dir, 'quizbowl/independent_longformer'),
+        'gap': path.join(args.base_data_dir, 'gap/longformer'),
         'wsc': path.join(args.base_data_dir, 'wsc/longformer'),
     }
 

@@ -69,11 +69,9 @@ def search_span(word_list, token_list):
     return -1
 
 
-def minimize_split(input_dir, output_dir, split="test"):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-
-    input_path = path.join(input_dir, "gap-test.tsv")
-    output_path = path.join(output_dir, "test.jsonlines".format(split))
+def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
+    input_path = path.join(input_dir, f"gap-{split}.tsv")
+    output_path = path.join(output_dir, f"{split}.jsonlines")
 
     instances_processed = 0
     with open(input_path) as reader_f, open(output_path, 'w') as writer_g:
@@ -119,10 +117,10 @@ def minimize_split(input_dir, output_dir, split="test"):
 
             document = DocumentState(doc_key.strip())
             document.tokens = tokenizer.convert_ids_to_tokens(doc_token_list)
-            print(document.tokens)
-            print(text)
-            print(label_to_span)
-            print(len(doc_token_list))
+            # print(document.tokens)
+            # print(text)
+            # print(label_to_span)
+            # print(len(doc_token_list))
             document.segments = [doc_token_list]
             document.subtoken_map = list(range(len(doc_token_list)))
             document.pronoun_span = label_to_span['pronoun']
@@ -146,6 +144,19 @@ def minimize_split(input_dir, output_dir, split="test"):
 
     print("Number of instances processed:", instances_processed)
     print(output_path)
+
+
+def minimize_split(input_dir, output_dir):
+    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+    # Create cross validation output dir
+
+    for split in ["validation", "test", "train"]:
+        minimize_partition(input_dir, output_dir, tokenizer, split=split)
+
+
+    # minimize_partition(input_dir, output_dir, split="test")
+    # minimize_partition("test", tokenizer, seg_len, input_dir, output_dir)
+    # minimize_partition("train", tokenizer, seg_len, input_dir, output_dir)
 
 
 if __name__ == "__main__":

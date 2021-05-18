@@ -37,6 +37,8 @@ class BaseController(nn.Module):
                     self.doc_class_to_idx[genre] = idx
                 self.genre_embeddings = nn.Embedding(len(genre_list), self.emb_size).to(self.device)
 
+            # print(self.genre_embeddings)
+
         # Mention modeling part
         self.span_width_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
         self.span_width_prior_embeddings = nn.Embedding(self.max_span_width, self.emb_size).to(self.device)
@@ -261,7 +263,8 @@ class BaseController(nn.Module):
             if doc_class in self.doc_class_to_idx:
                 doc_class_idx = self.doc_class_to_idx[doc_class]
             else:
-                doc_class_idx = self.doc_class_to_idx['nw']  # Non-dialog
+                doc_class_idx = self.doc_class_to_idx[self.default_genre]  # Non-dialog
+
             return {'genre': self.genre_embeddings(torch.tensor(doc_class_idx, device=self.device))}
         else:
             return {}

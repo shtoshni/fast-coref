@@ -160,6 +160,7 @@ class Experiment:
             self.model.set_max_ents(self.eval_max_ents)
         if self.use_gold_ments is not None:
             self.model.use_gold_ments = self.use_gold_ments
+        self.model.default_genre = self.default_genre
 
         # Change the default mention detection constants
         if self.max_span_width is not None:
@@ -336,7 +337,15 @@ class Experiment:
             dataset_dir = path.join(self.model_dir, dataset)
             if not path.exists(dataset_dir):
                 os.makedirs(dataset_dir)
-            log_file = path.join(dataset_dir, split + ".log.jsonl")
+            gold_ment_str = ''
+            if model.use_gold_ments:
+                gold_ment_str = '_gold'
+
+            file_suffix = ''
+            if dataset == 'ontonotes' and model.default_genre != 'nw':
+                file_suffix = f'_{model.default_genre}'
+
+            log_file = path.join(dataset_dir, split + gold_ment_str + file_suffix + ".log.jsonl")
             with open(log_file, 'w') as f:
                 # Capture the auxiliary action accuracy
                 corr_actions, total_actions = 0.0, 0.0
@@ -446,8 +455,10 @@ class Experiment:
         model = self.model
         model.eval()
         use_gold_ments = model.use_gold_ments
-        if dataset == 'wsc':
-            model.use_gold_ments = True
+
+        model.use_gold_ments = False
+        # if dataset == 'wsc':
+        #     model.use_gold_ments = True
 
         counter = collections.Counter()
 
@@ -469,30 +480,37 @@ class Experiment:
                         if isinstance(log_example[key], torch.Tensor):
                             del log_example[key]
 
+                    predicted_clusters, mention_to_predicted = \
+                        get_mention_to_cluster(predicted_clusters, threshold=1)
+                    pron_span = tuple(example['pronoun_span'])
+                    a_pred, b_pred = False, False
+
+                    if pron_span in mention_to_predicted:
+                        pron_cluster = mention_to_predicted[pron_span]
+                        for span in pron_cluster:
+                            a_aligned = is_aligned(span, tuple(example['a_span']))
+                            b_aligned = is_aligned(span, tuple(example['b_span']))
+
+                            if a_aligned:
+                                a_pred = True
+                            if b_aligned:
+                                b_pred = True
+
                     if dataset == 'wsc':
-                        set_predicted_clusters = sorted(get_cluster_sets(predicted_clusters), key=lambda x: len(x))
-                        set_gold_clusters = sorted(get_cluster_sets(example["clusters"]), key=lambda x: len(x))
-                        if set_predicted_clusters == set_gold_clusters:
-                            counter['corr'] += 1
+                        span_not_found = False
+                        for span in [example['a_span'], example['b_span'], example['pronoun_span']]:
+                            if tuple(span) not in mention_to_predicted:
+                                span_not_found = True
+                                break
+
+                        if span_not_found:
+                            counter['span_not_found'] += 1
+
+                        corr = ((a_pred == example['a_label']) and (b_pred == example['b_label']))
+                        log_example["correct"] = corr
+                        counter['corr'] += ((a_pred == example['a_label']) and (b_pred == example['b_label']))
                         counter['total'] += 1
                     elif dataset == 'gap':
-                        predicted_clusters, mention_to_predicted = \
-                            get_mention_to_cluster(predicted_clusters, threshold=1)
-
-                        pron_span = tuple(example['pronoun_span'])
-                        a_pred, b_pred = False, False
-
-                        if pron_span in mention_to_predicted:
-                            pron_cluster = mention_to_predicted[pron_span]
-                            for span in pron_cluster:
-                                a_aligned = is_aligned(span, tuple(example['a_span']))
-                                b_aligned = is_aligned(span, tuple(example['b_span']))
-
-                                if a_aligned:
-                                    a_pred = True
-                                if b_aligned:
-                                    b_pred = True
-
                         for gt, pred in zip([example['a_label'], example['b_label']], [a_pred, b_pred]):
                             if gt and pred:
                                 counter['true_positive'] += 1
@@ -503,8 +521,8 @@ class Experiment:
                             else:
                                 counter['false_positive'] += 1
 
-                        log_example["a_pred"] = a_pred
-                        log_example["b_pred"] = b_pred
+                    log_example["a_pred"] = a_pred
+                    log_example["b_pred"] = b_pred
 
                     log_example["predicted_clusters"] = predicted_clusters
 
@@ -519,6 +537,8 @@ class Experiment:
         if dataset == 'wsc':
             result_dict = {'fscore': (counter['corr'] * 100)/counter['total']}
             logger.info('Accuracy: %.1f' % result_dict['fscore'])
+            # print(counter)
+            logger.info('Span not found: %.1f%%' % ((counter['span_not_found'] * 100)/counter['total']))
         elif dataset == 'gap':
             prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])
             recall = counter['true_positive'] / (counter['true_positive'] + counter['false_negative'])
@@ -574,7 +594,11 @@ class Experiment:
             perf_dir = path.join(parent_dir, "perf")
             if not path.exists(perf_dir):
                 os.makedirs(perf_dir)
-            summary_file = path.join(perf_dir, self.slurm_id + ".json")
+
+            gold_ment_str = ''
+            if self.model.use_gold_ments:
+                gold_ment_str = '_gold'
+            summary_file = path.join(perf_dir, self.slurm_id + gold_ment_str + ".json")
 
         json.dump(perf_summary, open(summary_file, 'w'), indent=2)
         logger.info("Performance summary file: %s" % summary_file)
