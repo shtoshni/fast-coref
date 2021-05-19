@@ -1,37 +1,19 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
 
 import re
-import os
-import sys
 import json
-import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizerFast, LongformerTokenizerFast
 from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
+from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, normalize_word,\
+    BaseDocumentState
 
 
-class DocumentState(object):
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.orig_subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
+        super().__init__(key)
         self.clusters = collections.defaultdict(list)
-        self.coref_stacks = collections.defaultdict(list)
-        self.segment_info = []
 
     def finalize(self):
         # populate clusters
@@ -94,63 +76,15 @@ class DocumentState(object):
         }
 
 
-def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
-
-
-def flatten(l):
-  return [item for sublist in l for item in sublist]
-
-
-def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    # previous_token = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        info = document_state.info[current: end + 1]
-        document_state.segment_info.append(info)
-        current = end + 1
-        # previous_token = subtoken_map[-1]
-
-
-def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        # sent_map.append(current)
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-        # sent_map.append(current)
-    return sent_map
-
-
 def process_speaker(speaker):
     speaker = speaker.replace('_', ' ')
     return (' '.join([token.capitalize() for token in speaker.split()])).strip()
 
 
-def get_document(document_lines, tokenizer, segment_len, stats):
+def get_document(document_lines, args):
     document_state = DocumentState(document_lines[0])
+
+    tokenizer = args.tokenizer
     word_idx = -1
     orig_word_idx = -1
     last_speaker = '-'
@@ -159,27 +93,28 @@ def get_document(document_lines, tokenizer, segment_len, stats):
         sentence_end = len(row) == 0
         if not sentence_end:
             assert len(row) >= 12
-            speaker = row[9]
 
-            if speaker != last_speaker:
-                word_idx += 1
-                # Insert speaker tokens
-                speaker_str = process_speaker(speaker)
-                document_state.tokens.extend([SPEAKER_START, speaker_str, SPEAKER_END])
-                speaker_subtokens = []
-                speaker_subtokens.extend(tokenizer.convert_tokens_to_ids([SPEAKER_START]))
-                speaker_subtokens.extend(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(speaker_str))),
-                speaker_subtokens.extend(tokenizer.convert_tokens_to_ids([SPEAKER_END]))
+            if args.add_speaker:
+                speaker = row[9]
+                if speaker != last_speaker:
+                    word_idx += 1
+                    # Insert speaker tokens
+                    speaker_str = process_speaker(speaker)
+                    document_state.tokens.extend([SPEAKER_START, speaker_str, SPEAKER_END])
+                    speaker_subtokens = []
+                    speaker_subtokens.extend(tokenizer.convert_tokens_to_ids([SPEAKER_START]))
+                    speaker_subtokens.extend(tokenizer.convert_tokens_to_ids(tokenizer.tokenize(speaker_str))),
+                    speaker_subtokens.extend(tokenizer.convert_tokens_to_ids([SPEAKER_END]))
 
-                document_state.token_end += ([False] * (len(speaker_subtokens) - 1)) + [True]
-                for sidx, subtoken in enumerate(speaker_subtokens):
-                    document_state.subtokens.append(subtoken)
-                    document_state.info.append(None)
-                    document_state.sentence_end.append(False)
-                    document_state.subtoken_map.append(word_idx)
-                    document_state.orig_subtoken_map.append(-1)
+                    document_state.token_end += ([False] * (len(speaker_subtokens) - 1)) + [True]
+                    for sidx, subtoken in enumerate(speaker_subtokens):
+                        document_state.subtokens.append(subtoken)
+                        document_state.info.append(None)
+                        document_state.sentence_end.append(False)
+                        document_state.subtoken_map.append(word_idx)
+                        document_state.orig_subtoken_map.append(-1)
 
-                last_speaker = speaker
+                    last_speaker = speaker
 
             word_idx += 1
             orig_word_idx += 1
@@ -198,18 +133,14 @@ def get_document(document_lines, tokenizer, segment_len, stats):
         else:
             document_state.sentence_end[-1] = True
 
-    constraints1 = document_state.sentence_end
-    split_into_segments(document_state, segment_len,
-                        constraints1, document_state.token_end)
-    stats["max_sent_len"] = max(max(
-        [len(s) for s in document_state.segments]), stats["max_sent_len"])
+    split_into_segments(document_state, args.seg_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
 
 
-def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
-    input_path = path.join(input_dir, "{}.conll".format(split))
-    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
+def minimize_partition(split, args):
+    input_path = path.join(args.input_dir, "{}.conll".format(split))
+    output_path = path.join(args.output_dir, "{}.{}.jsonlines".format(split, args.seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
     documents = []
@@ -226,35 +157,23 @@ def minimize_partition(split, seg_len, input_dir, output_dir, tokenizer, stats):
                 documents[-1][1].append(line)
     with open(output_path, "w") as output_file:
         for document_lines in documents:
-            document = get_document(
-                document_lines, tokenizer, seg_len, stats)
+            document = get_document(document_lines, args)
             output_file.write(json.dumps(document))
             output_file.write("\n")
             count += 1
     print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(seg_len, input_dir, output_dir, stats):
-    # do_lower_case = True if 'chinese' in vocab_file else False
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    tokenizer.add_special_tokens({
-        'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
-    })
+def minimize_split(args):
+    tokenizer = args.tokenizer
+    if args.add_speaker:
+        tokenizer.add_special_tokens({
+            'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
+        })
 
-    minimize_partition("dev", seg_len, input_dir, output_dir, tokenizer, stats)
-    minimize_partition("train", seg_len, input_dir, output_dir, tokenizer, stats)
-    minimize_partition("test", seg_len, input_dir, output_dir, tokenizer, stats)
+    for split in ["dev", "test", "train"]:
+        minimize_partition(split, args)
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    # for seg_len in [128, 256, 384, 512]:
-    for seg_len in [2048, 4096]:
-        labels = collections.defaultdict(set)
-        stats = collections.defaultdict(int)
-        minimize_split(seg_len, input_dir, output_dir, stats)
-        for k, v in stats.items():
-            print("{} = {}".format(k, v))
+    minimize_split(parse_args())

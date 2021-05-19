@@ -1,36 +1,15 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-
 import re
-import os
-import sys
 import json
-import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizer, LongformerTokenizerFast
+from data_processing.utils import split_into_segments, flatten, normalize_word, get_sentence_map, \
+    parse_args, BaseDocumentState
 
 
-class DocumentState(object):
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = collections.defaultdict(list)
-        self.coref_stacks = collections.defaultdict(list)
-        self.speakers = []
-        self.segment_info = []
+        super().__init__(key)
 
     def finalize(self):
         # finalized: segments, segment_subtoken_map
@@ -73,8 +52,8 @@ class DocumentState(object):
                         else:
                             cluster_id = int(part[:-1])
                             start = self.coref_stacks[cluster_id].pop()
-                            self.clusters[cluster_id].append(
-                                (start, last_subtoken_index))
+                            self.clusters[cluster_id].append((start, last_subtoken_index))
+
         # merge clusters
         merged_clusters = []
         for c1 in self.clusters.values():
@@ -109,53 +88,6 @@ class DocumentState(object):
         }
 
 
-def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
-
-
-def flatten(l):
-  return [item for sublist in l for item in sublist]
-
-
-def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        info = document_state.info[current: end + 1]
-        document_state.segment_info.append(info)
-        current = end + 1
-
-
-def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-    return sent_map
-
-
 def get_document(document_lines, tokenizer, segment_len):
     document_state = DocumentState(document_lines[0])
     word_idx = -1
@@ -164,8 +96,6 @@ def get_document(document_lines, tokenizer, segment_len):
         sentence_end = len(row) == 0
         if not sentence_end:
             assert len(row) == 12
-            # if len(row) == 11:
-            #     row.append('-')
             word_idx += 1
             word = normalize_word(row[3])
             subtokens = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(word))
@@ -180,20 +110,17 @@ def get_document(document_lines, tokenizer, segment_len):
                 document_state.subtoken_map.append(word_idx)
         else:
             document_state.sentence_end[-1] = True
-    # split_into_segments(document_state, segment_len, document_state.token_end)
-    # split_into_segments(document_state, segment_len, document_state.sentence_end)
-    constraints1 = document_state.sentence_end
-    split_into_segments(document_state, segment_len,
-                        constraints1, document_state.token_end)
+
+    split_into_segments(document_state, segment_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
 
 
-def minimize_split(seg_len, input_dir, output_dir, split="test"):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+def minimize_split(args, split="test"):
+    tokenizer = args.tokenizer
 
-    input_path = path.join(input_dir, "{}.conll".format(split))
-    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
+    input_path = path.join(args.input_dir, "{}.conll".format(split))
+    output_path = path.join(args.output_dir, "{}.{}.jsonlines".format(split, args.seg_len))
     count = 0
     print("Minimizing {}".format(input_path))
     documents = []
@@ -210,8 +137,7 @@ def minimize_split(seg_len, input_dir, output_dir, split="test"):
                 documents[-1][1].append(line)
     with open(output_path, "w") as output_file:
         for document_lines in documents:
-            document = get_document(
-                document_lines, tokenizer, seg_len)
+            document = get_document(document_lines, tokenizer, args.seg_len)
             output_file.write(json.dumps(document))
             output_file.write("\n")
             count += 1
@@ -219,9 +145,4 @@ def minimize_split(seg_len, input_dir, output_dir, split="test"):
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    for seg_len in [2048, 4096]:
-        minimize_split(seg_len, input_dir, output_dir)
+    minimize_split(parse_args())

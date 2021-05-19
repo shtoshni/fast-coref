@@ -1,38 +1,17 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-
-import re
 import os
-import sys
 import json
-import collections
 from collections import defaultdict
 
-from coref_utils import conll
 from os import path
 from transformers import LongformerTokenizerFast
 from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
+from data_processing.utils import flatten, get_sentence_map, split_into_segments, parse_args, BaseDocumentState
+from pytorch_utils.transformer_utils import get_tokenizer
 
 
-
-class DocumentState(object):
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = []
-        self.cluster_str = []
-        self.segment_info = []
+        super().__init__(key)
 
     def finalize(self):
         all_mentions = flatten(self.clusters)
@@ -51,53 +30,6 @@ class DocumentState(object):
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
         }
-
-
-def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
-
-
-def flatten(l):
-  return [item for sublist in l for item in sublist]
-
-
-def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        info = document_state.info[current: end + 1]
-        document_state.segment_info.append(info)
-        current = end + 1
-
-
-def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-    return sent_map
 
 
 def process_speaker(speaker_list):
@@ -182,10 +114,10 @@ def get_document(instance, tokenizer, segment_len, add_speaker=False):
     return document
 
 
-def minimize_partition(split, tokenizer, seg_len, input_dir, output_dir, add_speaker=False):
+def minimize_partition(split, tokenizer, args):
     split_to_src_doc = {'train': 'trn', 'test': 'tst', 'dev': 'dev'}
-    input_path = path.join(input_dir, "character-identification-{}.json".format(split_to_src_doc[split]))
-    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
+    input_path = path.join(args.input_dir, "character-identification-{}.json".format(split_to_src_doc[split]))
+    output_path = path.join(args.output_dir, "{}.{}.jsonlines".format(split, args.seg_len))
 
     count = 0
     print("Minimizing {}".format(input_path))
@@ -193,7 +125,7 @@ def minimize_partition(split, tokenizer, seg_len, input_dir, output_dir, add_spe
         data = json.load(input_f)
         for episode in data['episodes']:
             for scene in episode['scenes']:
-                document = get_document(scene, tokenizer, segment_len=seg_len, add_speaker=add_speaker)
+                document = get_document(scene, tokenizer, segment_len=args.seg_len, add_speaker=args.add_speaker)
                 output_w.write(json.dumps(document))
                 output_w.write("\n")
                 count += 1
@@ -201,28 +133,16 @@ def minimize_partition(split, tokenizer, seg_len, input_dir, output_dir, add_spe
         print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(seg_len, input_dir, output_dir, add_speaker=False):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    if add_speaker:
+def minimize_split(args):
+    tokenizer = get_tokenizer(args.model)
+    if args.add_speaker:
         tokenizer.add_special_tokens({
             'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
         })
 
     for split in ["dev", "test", "train"]:
-        minimize_partition(split, tokenizer, seg_len, input_dir, output_dir, add_speaker=add_speaker)
-
+        minimize_partition(split, tokenizer, args)
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-input_dir', type=str)
-    parser.add_argument('-output_dir', type=str)
-    parser.add_argument('-add_speaker', default=False, action="store_true")
-
-    args = parser.parse_args()
-
-    if not os.path.isdir(args.output_dir):
-        os.makedirs(args.output_dir)
-    for seg_len in [2048, 4096]:
-        minimize_split(seg_len, args.input_dir, args.output_dir, add_speaker=args.add_speaker)
+    minimize_split(parse_args())

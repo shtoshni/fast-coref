@@ -1,33 +1,17 @@
-from os import path
-from collections import Counter, defaultdict
-
-import xml
 import xml.etree.ElementTree as ET
-
-import re
-import os
-import sys
 import json
+import numpy as np
 
-from coref_utils import conll
 from os import path
-from transformers import LongformerTokenizerFast
-from data_processing.utils import flatten
+from data_processing.utils import flatten, BaseDocumentState, parse_args
 
 TOTAL_INSTANCES = 273
 
 
-class DocumentState:
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.segments = []
-        self.subtoken_map = []
-        self.sentence_map = []
-        self.segment_info = []
+        super().__init__(key)
+
         self.pronoun_span = []
         self.a_span = []
         self.b_span = []
@@ -69,11 +53,11 @@ def search_span(word_list, token_list):
     return -1
 
 
-def minimize_split(input_dir, output_dir, split="test"):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+def minimize_split(args, split="test"):
+    tokenizer = args.tokenizer
 
-    input_path = path.join(input_dir, "WSCollection.xml")
-    output_path = path.join(output_dir, "test.jsonlines".format(split))
+    input_path = path.join(args.input_dir, "WSCollection.xml")
+    output_path = path.join(args.output_dir, "test.jsonlines".format(split))
     not_found_count = 0
     instances_processed = 0
 
@@ -162,15 +146,10 @@ def minimize_split(input_dir, output_dir, split="test"):
                 out_f.write(json.dumps(doc_dict) + "\n")
 
     print("Number of instances processed:", instances_processed)
-    import numpy as np
     print(f"Number of tokens per doc: {np.mean(num_tokens_list):.1f}")
     print(f"Avg, mention length: {np.mean(ment_len_list):.1f}")
     print(output_path)
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    minimize_split(input_dir, output_dir)
+    minimize_split(parse_args())

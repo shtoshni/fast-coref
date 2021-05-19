@@ -1,60 +1,25 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+import collections
 
 import re
 import os
-import sys
 import json
-import collections
 
 from coref_utils import conll
 from os import path
-from transformers import BertTokenizer, LongformerTokenizerFast
+from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, normalize_word,\
+    BaseDocumentState
 
 
-class DocumentState(object):
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = collections.defaultdict(list)
-        self.coref_stacks = collections.defaultdict(list)
-        self.speakers = []
-        self.segment_info = []
+        super().__init__(key)
 
     def finalize(self):
-        # finalized: segments, segment_subtoken_map
-        # populate speakers from info
-        subtoken_idx = 0
-        for segment in self.segment_info:
-            speakers = []
-            for i, tok_info in enumerate(segment):
-                if tok_info is None and (i == 0 or i == len(segment) - 1):
-                    speakers.append('[SPL]')
-                elif tok_info is None:
-                    speakers.append(speakers[-1])
-                else:
-                    speakers.append(tok_info[9])
-                    if tok_info[4] == 'PRP':
-                        self.pronouns.append(subtoken_idx)
-                subtoken_idx += 1
-            self.speakers += [speakers]
-        # populate sentence map
+        self.clusters = collections.defaultdict(list)
 
         # populate clusters
         first_subtoken_index = -1
         for seg_idx, segment in enumerate(self.segment_info):
-            speakers = []
             for i, tok_info in enumerate(segment):
                 first_subtoken_index += 1
                 coref = tok_info[-2] if tok_info is not None else '-'
@@ -98,7 +63,6 @@ class DocumentState(object):
         subtoken_map = flatten(self.segment_subtoken_map)
         assert len(all_mentions) == len(set(all_mentions))
         num_words = len(flatten(self.segments))
-        assert num_words == len(flatten(self.speakers))
         assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
         assert num_words == len(sentence_map), (num_words, len(sentence_map))
         return {
@@ -108,53 +72,6 @@ class DocumentState(object):
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
         }
-
-
-def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
-
-
-def flatten(l):
-  return [item for sublist in l for item in sublist]
-
-
-def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        info = document_state.info[current: end + 1]
-        document_state.segment_info.append(info)
-        current = end + 1
-
-
-def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-    return sent_map
 
 
 def get_document(document_lines, tokenizer, segment_len):
@@ -181,13 +98,8 @@ def get_document(document_lines, tokenizer, segment_len):
                 document_state.subtoken_map.append(word_idx)
         else:
             document_state.sentence_end[-1] = True
-    # split_into_segments(document_state, segment_len, document_state.token_end)
-    # split_into_segments(document_state, segment_len, document_state.sentence_end)
-    constraints1 = document_state.sentence_end
-    split_into_segments(document_state, segment_len,
-                        constraints1, document_state.token_end)
-    stats["max_sent_len"] = max(max(
-        [len(s) for s in document_state.segments]), stats["max_sent_len"])
+
+    split_into_segments(document_state, segment_len, document_state.sentence_end, document_state.token_end)
     document = document_state.finalize()
     return document
 
@@ -221,34 +133,17 @@ def minimize_partition(split, cross_val_split, tokenizer,
     print("Wrote {} documents to {}".format(count, output_path))
 
 
-def minimize_split(cross_val_split, seg_len, input_dir, output_dir):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    # Create cross validation output dir
-    cross_val_dir = path.join(output_dir, str(cross_val_split))
-    if not path.exists(cross_val_dir):
-        os.makedirs(cross_val_dir)
+def minimize_split(args):
+    for cross_val_split in range(10):
+        # Create cross validation output dir
+        cross_val_dir = path.join(args.output_dir, str(cross_val_split))
+        if not path.exists(cross_val_dir):
+            os.makedirs(cross_val_dir)
 
-    minimize_partition("dev", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("train", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
-    minimize_partition("test", cross_val_split,
-                       tokenizer, seg_len, input_dir, output_dir)
+        for split in ["dev", "test", "train"]:
+            minimize_partition(split, cross_val_split,
+                               args.tokenizer, args.seg_len, args.input_dir, args.output_dir)
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    for cross_val_split in range(10):
-        # for seg_len in [128, 256, 384, 512]:
-        for seg_len in [2048, 4096]:
-            labels = collections.defaultdict(set)
-            stats = collections.defaultdict(int)
-            minimize_split(cross_val_split, seg_len, input_dir, output_dir)
-            for k, v in labels.items():
-                print("{} = [{}]".format(k, ", ".join(
-                    "\"{}\"".format(label) for label in v)))
-            for k, v in stats.items():
-                print("{} = {}".format(k, v))
+    minimize_split(parse_args())

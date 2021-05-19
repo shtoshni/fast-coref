@@ -1,30 +1,15 @@
-import os
-import sys
+import glob
 import json
-import collections
 
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from os import path
-from transformers import LongformerTokenizerFast
+from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, BaseDocumentState
 
 
-class DocumentState(object):
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = collections.defaultdict(list)
-        self.coref_stacks = collections.defaultdict(list)
-        self.segment_info = []
+        super().__init__(key)
 
     def finalize(self):
         all_mentions = flatten(self.clusters)
@@ -44,53 +29,6 @@ class DocumentState(object):
             'sentence_map': sentence_map,
             "subtoken_map": subtoken_map,
         }
-
-
-def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
-
-
-def flatten(l):
-  return [item for sublist in l for item in sublist]
-
-
-def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        info = document_state.info[current: end + 1]
-        document_state.segment_info.append(info)
-        current = end + 1
-
-
-def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-    return sent_map
 
 
 def get_document(text_file, xml_file, tokenizer, segment_len):
@@ -139,6 +77,7 @@ def get_document(text_file, xml_file, tokenizer, segment_len):
             coref_class_to_spans[coref_class].append((span_start, span_end))
 
     coref_class_list = list(coref_class_to_spans.keys())
+    # Remove singletons
     for coref_class in coref_class_list:
         if len(coref_class_to_spans[coref_class]) == 1:
             # print(xml_file)
@@ -154,25 +93,21 @@ def get_document(text_file, xml_file, tokenizer, segment_len):
     return document
 
 
-def minimize_split(seg_len, input_dir, output_dir, split="test"):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    # Create cross validation output dir
+def minimize_split(args, split="test"):
+    tokenizer = args.tokenizer
 
-    import glob
-    text_files = glob.glob(path.join(input_dir, "*/*.txt"))
+    text_files = glob.glob(path.join(args.input_dir, "*/*.txt"))
     xml_files = []
     for text_file in text_files:
         markable_dir = path.join(path.dirname(text_file), "Markables")
         ontonotes_file = glob.glob(path.join(markable_dir, "*_OntoNotes*.xml"))[0]
         xml_files.append(ontonotes_file)
 
-    input_path = path.join(input_dir, "{}.jsonl".format(split))
-    output_path = path.join(output_dir, "{}.{}.jsonlines".format(split, seg_len))
+    output_path = path.join(args.output_dir, "{}.{}.jsonlines".format(split, args.seg_len))
     count = 0
-    print("Minimizing {}".format(input_path))
     with open(output_path, "w") as output_file:
         for (text_file, xml_file) in zip(text_files, xml_files):
-            document = get_document(text_file, xml_file, tokenizer, seg_len)
+            document = get_document(text_file, xml_file, tokenizer, args.seg_len)
             output_file.write(json.dumps(document))
             output_file.write("\n")
             count += 1
@@ -180,9 +115,4 @@ def minimize_split(seg_len, input_dir, output_dir, split="test"):
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    for seg_len in [2048, 4096]:
-        minimize_split(seg_len, input_dir, output_dir)
+    minimize_split(parse_args())

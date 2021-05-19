@@ -1,33 +1,13 @@
-from os import path
-from collections import Counter, defaultdict
-
-import xml
-import xml.etree.ElementTree as ET
-
-import re
-import os
-import sys
 import json
 
-from coref_utils import conll
 from os import path
-from transformers import LongformerTokenizerFast
-from data_processing.utils import flatten
-
-TOTAL_INSTANCES = 273
+from data_processing.utils import flatten, BaseDocumentState, parse_args
 
 
-class DocumentState:
+class DocumentState(BaseDocumentState):
     def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.segments = []
-        self.subtoken_map = []
-        self.sentence_map = []
-        self.segment_info = []
+        super().__init__(key)
+
         self.pronoun_span = []
         self.a_span = []
         self.b_span = []
@@ -35,7 +15,6 @@ class DocumentState:
         self.b_label = 0
 
     def finalize(self):
-        # print(all_mentions)
         num_words = len(flatten(self.segments))
         sentence_map = [0] * num_words
         assert num_words == len(self.subtoken_map), (num_words, len(self.subtoken_map))
@@ -146,22 +125,12 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
     print(output_path)
 
 
-def minimize_split(input_dir, output_dir):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    # Create cross validation output dir
+def minimize_split(args):
+    tokenizer = args.tokenizer
 
     for split in ["validation", "test", "train"]:
-        minimize_partition(input_dir, output_dir, tokenizer, split=split)
-
-
-    # minimize_partition(input_dir, output_dir, split="test")
-    # minimize_partition("test", tokenizer, seg_len, input_dir, output_dir)
-    # minimize_partition("train", tokenizer, seg_len, input_dir, output_dir)
+        minimize_partition(args.input_dir, args.output_dir, tokenizer, split=split)
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    minimize_split(input_dir, output_dir)
+    minimize_split(parse_args())
