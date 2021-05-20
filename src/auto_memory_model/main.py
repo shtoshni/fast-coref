@@ -38,7 +38,7 @@ def main():
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model_size', default='large', type=str, help='Model size')
-    parser.add_argument('-max_segment_len', default=2048, type=int,
+    parser.add_argument('-max_segment_len', default=4096, type=int,
                         help='Max segment length of windowed inputs.')
     parser.add_argument('-add_speaker_tokens', default=False, action="store_true",
                         help='Max segment length of windowed inputs.')
@@ -102,7 +102,7 @@ def main():
     parser.add_argument('-normalize_loss', default=False, action="store_true",
                         help='Normalize loss')
     parser.add_argument('-max_evals',
-                        help='Maximum number of evals', default=25, type=int)
+                        help='Maximum number of evals', default=20, type=int)
     parser.add_argument('-patience', default=5, type=int,
                         help='Maximum evaluations without improvement')
     parser.add_argument('-seed', default=0,

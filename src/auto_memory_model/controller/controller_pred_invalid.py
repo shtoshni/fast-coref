@@ -87,7 +87,7 @@ class ControllerPredInvalid(BaseController):
             num_tokens = len(instance["sentences"][idx])
 
             clusters = []
-            for orig_cluster in instance["clusters"]:
+            for orig_cluster in instance.get("clusters", []):
                 cluster = []
                 for mention in orig_cluster:
                     ment_start, ment_end = mention[:2]

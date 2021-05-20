@@ -8,6 +8,8 @@ def load_dataset(data_dir, max_segment_len=2048, dataset='litbank',
     all_splits = []
     for split in ["train", "dev", "test"]:
         jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
+        if not path.exists(jsonl_file):
+            jsonl_file = path.join(data_dir, "{}.jsonlines".format(split))
         split_data = []
         with open(jsonl_file) as f:
             for line in f:

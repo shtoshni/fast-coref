@@ -11,7 +11,6 @@ class BaseDocEncoder(nn.Module):
         self.device = device
         self.finetune = finetune
         self.add_speaker_tokens = add_speaker_tokens
-        print("Encoder:", self.device)
 
         gradient_checkpointing = False
         if finetune and self.training:

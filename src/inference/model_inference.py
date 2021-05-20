@@ -14,7 +14,6 @@ class Inference:
         checkpoint = torch.load(model_path, map_location=self.device)
         self.model = pick_controller(device=self.device, **checkpoint['model_args'])
         self.max_segment_len = checkpoint['model_args']['max_segment_len']
-        self.doc_enc = checkpoint['model_args']['doc_enc']
 
         self.model.load_state_dict(checkpoint['model'])
         self.model = self.model.to(self.device)
@@ -62,7 +61,7 @@ class Inference:
 
 
 if __name__ == '__main__':
-    model_path = "/home/shtoshni/Research/fast-coref/models/longformer_ontonotes/model.pth"
+    model_path = "/home/shtoshni/Research/fast-coref/models/preco/model.pth"
     model = Inference(model_path)
     doc = "My father’s eyes had closed upon the light of this world six months, when I opened on it."
     output_dict = model.perform_coreference(doc)

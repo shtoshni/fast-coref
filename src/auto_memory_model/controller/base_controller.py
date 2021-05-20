@@ -11,7 +11,6 @@ class BaseController(nn.Module):
         super(BaseController, self).__init__()
         self.__dict__.update(kwargs)
 
-        print("Basecontroller:", self.device)
         if torch.cuda.device_count() > 1:
             kwargs['device'] = torch.device('cuda:1')
 
