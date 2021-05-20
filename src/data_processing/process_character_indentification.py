@@ -1,12 +1,9 @@
-import os
 import json
 from collections import defaultdict
 
 from os import path
-from transformers import LongformerTokenizerFast
 from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
 from data_processing.utils import flatten, get_sentence_map, split_into_segments, parse_args, BaseDocumentState
-from pytorch_utils.transformer_utils import get_tokenizer
 
 
 class DocumentState(BaseDocumentState):
@@ -114,7 +111,7 @@ def get_document(instance, tokenizer, segment_len, add_speaker=False):
     return document
 
 
-def minimize_partition(split, tokenizer, args):
+def minimize_partition(split, args):
     split_to_src_doc = {'train': 'trn', 'test': 'tst', 'dev': 'dev'}
     input_path = path.join(args.input_dir, "character-identification-{}.json".format(split_to_src_doc[split]))
     output_path = path.join(args.output_dir, "{}.{}.jsonlines".format(split, args.seg_len))
@@ -125,7 +122,7 @@ def minimize_partition(split, tokenizer, args):
         data = json.load(input_f)
         for episode in data['episodes']:
             for scene in episode['scenes']:
-                document = get_document(scene, tokenizer, segment_len=args.seg_len, add_speaker=args.add_speaker)
+                document = get_document(scene, args.tokenizer, segment_len=args.seg_len, add_speaker=args.add_speaker)
                 output_w.write(json.dumps(document))
                 output_w.write("\n")
                 count += 1
@@ -134,14 +131,14 @@ def minimize_partition(split, tokenizer, args):
 
 
 def minimize_split(args):
-    tokenizer = get_tokenizer(args.model)
+    tokenizer = args.tokenizer
     if args.add_speaker:
         tokenizer.add_special_tokens({
             'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
         })
 
     for split in ["dev", "test", "train"]:
-        minimize_partition(split, tokenizer, args)
+        minimize_partition(split, args)
 
 
 if __name__ == "__main__":
