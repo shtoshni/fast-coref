@@ -56,13 +56,13 @@ class Experiment:
         self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
         self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
 
-        do_train = False
         # Prepare model
         if not self.eval_model:
-            # Train info is a dictionary to keep around important training variables
             self.num_training_steps = 1e6
             # Initialize model and training metadata
             do_train = self.setup_training()
+        else:
+            do_train = False
 
         if not do_train:
             self.setup_eval()
@@ -95,9 +95,8 @@ class Experiment:
                     num_eval_docs=self.num_eval_docs)
             else:
                 self.orig_data_map[dataset] = load_dataset(
-                    data_dir, dataset=dataset,
-                    num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs,
-                    singleton_file=self.singleton_file, skip_dialog_data=self.skip_dialog_data)
+                    data_dir, dataset=dataset, singleton_file=self.singleton_file,
+                    num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
 
     def process_data(self):
         if self.eval_model:
@@ -225,8 +224,6 @@ class Experiment:
                 else:
                     train_data += dataset_train_data
             np.random.shuffle(train_data)
-            if self.num_train_docs:
-                train_data = train_data[:self.num_train_docs]
             logger.info("Per epoch training steps: %d" % len(train_data))
             encoder_params, task_params = model.get_params()
 

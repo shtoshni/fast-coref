@@ -86,7 +86,7 @@ def main():
     parser.add_argument('-num_preco_docs', default=None, type=int,
                         help='Number of preco training docs.')
     parser.add_argument('-num_train_docs', default=None, type=int,
-                        help='Number of training docs.')
+                        help='Number of maximum training docs loaded in memory.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
     parser.add_argument('-dropout_rate', default=0.3, type=float,
