@@ -8,5 +8,3 @@ def pick_controller(mem_type='unbounded', dataset='litbank', device='cuda', **kw
         raise NotImplementedError(mem_type)
 
     return model
-
-

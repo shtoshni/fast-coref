@@ -15,7 +15,7 @@ from transformers import get_linear_schedule_with_warmup, AdamW
 from auto_memory_model.utils import action_sequences_to_clusters
 from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
-from coref_utils.utils import get_mention_to_cluster, get_cluster_sets, is_aligned
+from coref_utils.utils import get_mention_to_cluster, is_aligned
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
 from auto_memory_model.controller import BaseController
@@ -57,7 +57,6 @@ class Experiment:
         self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
 
         do_train = False
-
         # Prepare model
         if not self.eval_model:
             # Train info is a dictionary to keep around important training variables
@@ -455,10 +454,7 @@ class Experiment:
         model = self.model
         model.eval()
         use_gold_ments = model.use_gold_ments
-
         model.use_gold_ments = False
-        # if dataset == 'wsc':
-        #     model.use_gold_ments = True
 
         counter = collections.Counter()
 
@@ -530,8 +526,6 @@ class Experiment:
                     f.write(json.dumps(log_example) + "\n")
 
         logger.info(log_file)
-        # Restore use of gold mentions
-        model.use_gold_ments = use_gold_ments
 
         result_dict = {'fscore': 0.0}
         if dataset == 'wsc':
@@ -548,6 +542,9 @@ class Experiment:
                 result_dict = {'fscore': (2 * prec * recall * 100)/(prec + recall)}
 
             logger.info('F-score: %.1f' % result_dict['fscore'])
+
+        # Restore use of gold mentions
+        model.use_gold_ments = use_gold_ments
 
         return result_dict
 

@@ -21,8 +21,6 @@ def main():
     parser.add_argument('-data_dir', default=None, help='Data directory', type=str)
     parser.add_argument('-singleton_file', default=None,
                         help='Singleton mentions separately extracted for training.')
-    parser.add_argument('-skip_dialog_data', default=False, action="store_true",
-                        help='Skip dialog data.')
     parser.add_argument('-base_model_dir', default='../models',
                         help='Root folder storing model runs', type=str)
     parser.add_argument('-model_dir', default=None,
@@ -136,7 +134,7 @@ def main():
                 'dropout_rate', 'seed', 'init_lr', 'lr_decay', 'max_evals',
                 'label_smoothing_wt', 'ment_loss', 'normalize_loss',
                 'num_ontonotes_docs', 'num_litbank_docs', 'num_preco_docs', 'num_train_docs',
-                'sim_func', 'fine_tune_lr', 'doc_class', 'skip_dialog_data',
+                'sim_func', 'fine_tune_lr', 'doc_class',
                 'remove_singletons', 'add_speaker_tokens']
 
     changed_opts = OrderedDict()

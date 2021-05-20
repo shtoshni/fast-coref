@@ -186,8 +186,3 @@ def get_actions_lru(pred_mentions, gt_clusters, max_ents):
             cluster_to_rem_mentions[mention_cluster] -= 1
 
     return actions
-
-
-
-
-
