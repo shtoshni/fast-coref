@@ -61,9 +61,12 @@ class Inference:
 
 
 if __name__ == '__main__':
-    model_path = "/home/shtoshni/Research/fast-coref/models/preco/model.pth"
+    model_path = "/home/shtoshni/Research/fast-coref/models/joint_downsample_30K/model.pth"
     model = Inference(model_path)
-    doc = "My father’s eyes had closed upon the light of this world six months, when I opened on it."
+    model.model.max_span_width = 10
+    doc = "The practice of referring to Voldemort as \"He Who Must Not Be Named\" might have begun when he used a " \
+          "Taboo. This is, however, unlikely because Dumbledore encouraged using his proper name so as to not fear " \
+          "the name. If saying the Dark Lord’s name would have endangered people, he would not have encouraged it."
     output_dict = model.perform_coreference(doc)
     print(output_dict["clusters"])
 

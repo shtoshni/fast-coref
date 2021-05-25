@@ -15,6 +15,7 @@ class DocumentState:
         self.sentence_map = []
         self.tensorized_sent = []
         self.sent_len_list = []
+        self.part_lens = []
 
     def finalize(self):
         subtoken_map = flatten(self.segment_subtoken_map)
@@ -27,6 +28,7 @@ class DocumentState:
             "tensorized_sent": self.tensorized_sent,
             'sentence_map': torch.tensor([0] * num_words),  # Assume no sentence boundaries are specified
             "subtoken_map": subtoken_map,
+            "part_lens": self.part_lens,
         }
 
 
@@ -72,6 +74,7 @@ def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=4096):
     document_state = DocumentState()
     for doc_str in doc_list:
         get_tokenized_doc(doc_str, lm_tokenizer, document_state=document_state)
+        document_state.part_lens.append(len(document_state.tokens))
 
     document = post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=max_segment_len)
     return document
