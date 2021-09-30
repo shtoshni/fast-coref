@@ -61,12 +61,15 @@ class Inference:
 
 
 if __name__ == '__main__':
-    model_path = "/home/shtoshni/Research/fast-coref/models/ontonotes_genre/model.pth"
+    doc = open("/home/shtoshni/Research/litbank_coref/data/doc.txt").readlines()
+    print(doc)
+
+    model_path = "/home/shtoshni/Research/fast-coref/models/joint_downsample_500/model.pth"
     model = Inference(model_path)
     model.model.max_span_width = 10
-    doc = "The practice of referring to Voldemort as \"He Who Must Not Be Named\" might have begun when he used a " \
-          "Taboo. This is, however, unlikely because Dumbledore encouraged using his proper name so as to not fear " \
-          "the name. If saying the Dark Lord’s name would have endangered people, he would not have encouraged it."
+    # doc = "The practice of referring to Voldemort as \"He Who Must Not Be Named\" might have begun when he used a " \
+    #       "Taboo. This is, however, unlikely because Dumbledore encouraged using his proper name so as to not fear " \
+    #       "the name. If saying the Dark Lord’s name would have endangered people, he would not have encouraged it."
     # doc = " Kimberly and Jennifer are friends . The former is a teacher . "
     output_dict = model.perform_coreference(doc)
     print(output_dict["clusters"])

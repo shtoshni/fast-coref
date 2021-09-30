@@ -70,6 +70,12 @@ class Evaluator(object):
     def get_counts(self):
         return self.p_num, self.p_den, self.r_num, self.r_den
 
+    def get_prf_str(self):
+        perf_str = f"Recall: {self.get_recall() * 100:.1f}, Precision: {self.get_precision() * 100:.1f}, " \
+                   f"F-score: {self.get_f1() * 100: .1f}\n"
+
+        return perf_str
+
 
 def evaluate_documents(documents, metric, beta=1):
     evaluator = Evaluator(metric, beta=beta)

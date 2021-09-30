@@ -3,7 +3,7 @@ import os
 import collections
 from os import path
 from auto_memory_model.constants import MODEL_TO_MAX_LEN, MODEL_TO_MODEL_STR
-from pytorch_utils.transformer_utils import get_tokenizer
+from transformers import LongformerTokenizerFast, AutoTokenizer
 
 
 class BaseDocumentState:
@@ -78,13 +78,29 @@ def get_sentence_map(segments, sentence_end):
     return sent_map
 
 
+def get_tokenizer(model_str):
+    if 'longformer' in model_str:
+        tokenizer = LongformerTokenizerFast.from_pretrained(model_str, add_prefix_space=True)
+        tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
+
+        def tokenize_fn(word, self=tokenizer):
+            return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
+
+        tokenizer.tokenize = tokenize_fn
+
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_str)
+
+    return tokenizer
+
+
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('input_dir', type=str, help="Input directory.")
     parser.add_argument('output_dir', type=str, help="Output directory.")
     parser.add_argument('-model',  default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
                         type=str, help="Model type.")
-    parser.add_argument('-seg_len', default=4096, help="Max. segment length")
+    parser.add_argument('-seg_len', default=2048, help="Max. segment length")
     parser.add_argument('-add_speaker', default=False, action="store_true",
                         help="Speaker represented in text.")
 
@@ -96,8 +112,13 @@ def parse_args():
     args.model = MODEL_TO_MODEL_STR[args.model]
     args.tokenizer = get_tokenizer(args.model)
 
+    print(args.tokenizer.tokenize("Hello"))
+
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
     return args
 
+
+if __name__=='__main__':
+    parse_args()

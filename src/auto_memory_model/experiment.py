@@ -321,6 +321,7 @@ class Experiment:
         self.model.train()
         return fscore
 
+    @torch.no_grad()
     def evaluate_model(self, split='dev', final_eval=False, cluster_threshold=1, dataset='litbank'):
         """Eval model"""
         model = self.model
@@ -329,124 +330,123 @@ class Experiment:
         num_gt_clusters, num_pred_clusters = 0, 0
         inference_time = 0.0
 
-        with torch.no_grad():
-            dataset_dir = path.join(self.model_dir, dataset)
-            if not path.exists(dataset_dir):
-                os.makedirs(dataset_dir)
-            gold_ment_str = ''
-            if model.use_gold_ments:
-                gold_ment_str = '_gold'
+        dataset_dir = path.join(self.model_dir, dataset)
+        if not path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+        gold_ment_str = ''
+        if model.use_gold_ments:
+            gold_ment_str = '_gold'
 
-            file_suffix = ''
-            if dataset == 'ontonotes' and model.default_genre != 'nw':
-                file_suffix = f'_{model.default_genre}'
+        file_suffix = ''
+        if dataset == 'ontonotes' and model.default_genre != 'nw':
+            file_suffix = f'_{model.default_genre}'
 
-            log_file = path.join(dataset_dir, split + gold_ment_str + file_suffix + ".log.jsonl")
-            with open(log_file, 'w') as f:
-                # Capture the auxiliary action accuracy
-                corr_actions, total_actions = 0.0, 0.0
-                oracle_evaluator, evaluator = CorefEvaluator(), CorefEvaluator()
-                coref_predictions, subtoken_maps = {}, {}
+        log_file = path.join(dataset_dir, split + gold_ment_str + file_suffix + ".log.jsonl")
+        with open(log_file, 'w') as f:
+            # Capture the auxiliary action accuracy
+            corr_actions, total_actions = 0.0, 0.0
+            oracle_evaluator, evaluator = CorefEvaluator(), CorefEvaluator()
+            coref_predictions, subtoken_maps = {}, {}
 
-                logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
-                for example in self.data_iter_map[split][dataset]:
-                    start_time = time.time()
-                    action_list, pred_mentions, gt_actions, mention_scores = model(example)
-                    # Predicted cluster
-                    raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
-                    predicted_clusters, mention_to_predicted =\
-                        get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
-                    gold_clusters, mention_to_gold =\
-                        get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
-                    evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
+            logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
+            for example in self.data_iter_map[split][dataset]:
+                start_time = time.time()
+                action_list, pred_mentions, gt_actions, mention_scores = model(example)
+                # Predicted cluster
+                raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+                predicted_clusters, mention_to_predicted =\
+                    get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
+                gold_clusters, mention_to_gold =\
+                    get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
+                evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
 
-                    elapsed_time = time.time() - start_time
-                    inference_time += elapsed_time
+                elapsed_time = time.time() - start_time
+                inference_time += elapsed_time
 
-                    coref_predictions[example["doc_key"]] = predicted_clusters
-                    subtoken_maps[example["doc_key"]] = example["subtoken_map"]
+                coref_predictions[example["doc_key"]] = predicted_clusters
+                subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
-                    total_actions += len(action_list)
-                    # Update the number of clusters
-                    num_gt_clusters += len(gold_clusters)
-                    num_pred_clusters += len(predicted_clusters)
+                total_actions += len(action_list)
+                # Update the number of clusters
+                num_gt_clusters += len(gold_clusters)
+                num_pred_clusters += len(predicted_clusters)
 
-                    # Oracle clustering
-                    oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
-                    oracle_clusters, mention_to_oracle = \
-                        get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
-                    oracle_evaluator.update(oracle_clusters, gold_clusters, mention_to_oracle, mention_to_gold)
+                # Oracle clustering
+                oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
+                oracle_clusters, mention_to_oracle = \
+                    get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
+                oracle_evaluator.update(oracle_clusters, gold_clusters, mention_to_oracle, mention_to_gold)
 
-                    log_example = dict(example)
-                    log_example["pred_mentions"] = pred_mentions
-                    log_example["mention_scores"] = mention_scores
-                    if cluster_threshold != 1:
-                        # For cluster threshold 1, raw and processed clusters are one and the same
-                        log_example["raw_predicted_clusters"] = raw_predicted_clusters
-                    log_example["pred_actions"] = action_list
-                    log_example["predicted_clusters"] = predicted_clusters
+                log_example = dict(example)
+                log_example["pred_mentions"] = pred_mentions
+                log_example["mention_scores"] = mention_scores
+                if cluster_threshold != 1:
+                    # For cluster threshold 1, raw and processed clusters are one and the same
+                    log_example["raw_predicted_clusters"] = raw_predicted_clusters
+                log_example["pred_actions"] = action_list
+                log_example["predicted_clusters"] = predicted_clusters
 
-                    del log_example["tensorized_sent"]
-                    for key in list(log_example.keys()):
-                        if isinstance(log_example[key], torch.Tensor):
-                            del log_example[key]
+                del log_example["tensorized_sent"]
+                for key in list(log_example.keys()):
+                    if isinstance(log_example[key], torch.Tensor):
+                        del log_example[key]
 
-                    f.write(json.dumps(log_example) + "\n")
+                f.write(json.dumps(log_example) + "\n")
 
-                # Print individual metrics
-                result_dict = OrderedDict()
-                indv_metrics_list = ['MUC', 'Bcub', 'CEAFE']
-                perf_str = ""
-                for indv_metric, indv_evaluator in zip(indv_metrics_list, evaluator.evaluators):
-                    perf_str += ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
-                    result_dict[indv_metric] = OrderedDict()
-                    result_dict[indv_metric]['recall'] = round(indv_evaluator.get_recall() * 100, 1)
-                    result_dict[indv_metric]['precision'] = round(indv_evaluator.get_precision() * 100, 1)
-                    result_dict[indv_metric]['fscore'] = round(indv_evaluator.get_f1() * 100, 1)
+            # Print individual metrics
+            result_dict = OrderedDict()
+            indv_metrics_list = ['MUC', 'Bcub', 'CEAFE']
+            perf_str = ""
+            for indv_metric, indv_evaluator in zip(indv_metrics_list, evaluator.evaluators):
+                perf_str += ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
+                result_dict[indv_metric] = OrderedDict()
+                result_dict[indv_metric]['recall'] = round(indv_evaluator.get_recall() * 100, 1)
+                result_dict[indv_metric]['precision'] = round(indv_evaluator.get_precision() * 100, 1)
+                result_dict[indv_metric]['fscore'] = round(indv_evaluator.get_f1() * 100, 1)
 
-                fscore = evaluator.get_f1() * 100
-                result_dict['fscore'] = round(fscore, 1)
-                logger.info("F-score: %.1f %s" % (fscore, perf_str))
+            result_dict['fscore'] = round(evaluator.get_f1() * 100, 1)
+            logger.info("F-score: %.1f %s" % (result_dict['fscore'], perf_str))
 
-                try:
-                    # (1) Only use CoNLL evaluator script for final evaluation
-                    # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
-                    use_conll = (cluster_threshold == self.canonical_cluster_threshold[dataset])
-                    # (3) Check if the scorer and CoNLL annotation directory exist
-                    path_exists_bool = False
-                    if self.conll_scorer is not None and self.conll_data_dir is not None \
-                            and dataset in self.conll_data_dir:
-                        path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
-                    if final_eval and use_conll and path_exists_bool:
-                        gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
-                        prediction_file = path.join(dataset_dir, f'{split}.conll')
-                        conll_results = evaluate_conll(
-                            self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
+            try:
+                # (1) Only use CoNLL evaluator script for final evaluation
+                # (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
+                use_conll = (cluster_threshold == self.canonical_cluster_threshold[dataset])
+                # (3) Check if the scorer and CoNLL annotation directory exist
+                path_exists_bool = False
+                if self.conll_scorer is not None and self.conll_data_dir is not None \
+                        and dataset in self.conll_data_dir:
+                    path_exists_bool = path.exists(self.conll_scorer) and path.exists(self.conll_data_dir[dataset])
+                if final_eval and use_conll and path_exists_bool:
+                    gold_path = path.join(self.conll_data_dir[dataset], f'{split}.conll')
+                    prediction_file = path.join(dataset_dir, f'{split}.conll')
+                    conll_results = evaluate_conll(
+                        self.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
-                        for indv_metric in indv_metrics_list:
-                            result_dict[indv_metric] = OrderedDict()
-                            result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
-                            result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
-                            result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)
+                    for indv_metric in indv_metrics_list:
+                        result_dict[indv_metric] = OrderedDict()
+                        result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
+                        result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
+                        result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)
 
-                        average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
-                        result_dict['fscore'] = round(average_f1, 1)
+                    average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
+                    result_dict['fscore'] = round(average_f1, 1)
 
-                        logger.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
-                                    % (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"],
-                                        conll_results['ceafe']["f"]))
-                        logger.info("Prediction file: %s" % prediction_file)
-                except AttributeError:
-                    pass
+                    logger.info("(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
+                                % (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"],
+                                    conll_results['ceafe']["f"]))
+                    logger.info("Prediction file: %s" % prediction_file)
+            except AttributeError:
+                pass
 
-                logger.info("Oracle F-score: %.3f" % oracle_evaluator.get_prf()[2])
-                logger.info(log_file)
-                logger.handlers[0].flush()
+            logger.info("Oracle F-score: %.3f" % oracle_evaluator.get_prf()[2])
+            logger.info(log_file)
+            logger.handlers[0].flush()
 
         logger.info("Inference time: %.2f" % inference_time)
 
         return result_dict
 
+    @torch.no_grad()
     def targeted_eval(self, split="test", dataset="wsc"):
         model = self.model
         model.eval()
@@ -455,72 +455,71 @@ class Experiment:
 
         counter = collections.Counter()
 
-        with torch.no_grad():
-            dataset_dir = path.join(self.model_dir, dataset)
-            if not path.exists(dataset_dir):
-                os.makedirs(dataset_dir)
-            log_file = path.join(dataset_dir, split + ".log.jsonl")
-            with open(log_file, 'w') as f:
-                # Capture the auxiliary action accuracy
-                logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
-                for example in self.data_iter_map[split][dataset]:
-                    action_list, pred_mentions, gt_actions, mention_scores = model(example)
-                    predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+        dataset_dir = path.join(self.model_dir, dataset)
+        if not path.exists(dataset_dir):
+            os.makedirs(dataset_dir)
+        log_file = path.join(dataset_dir, split + ".log.jsonl")
+        with open(log_file, 'w') as f:
+            # Capture the auxiliary action accuracy
+            logger.info(f"Evaluating on {len(self.data_iter_map[split][dataset])} examples")
+            for example in self.data_iter_map[split][dataset]:
+                action_list, pred_mentions, gt_actions, mention_scores = model(example)
+                predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
 
-                    log_example = dict(example)
-                    del log_example["tensorized_sent"]
-                    for key in list(log_example.keys()):
-                        if isinstance(log_example[key], torch.Tensor):
-                            del log_example[key]
+                log_example = dict(example)
+                del log_example["tensorized_sent"]
+                for key in list(log_example.keys()):
+                    if isinstance(log_example[key], torch.Tensor):
+                        del log_example[key]
 
-                    predicted_clusters, mention_to_predicted = \
-                        get_mention_to_cluster(predicted_clusters, threshold=1)
-                    pron_span = tuple(example['pronoun_span'])
-                    a_pred, b_pred = False, False
+                predicted_clusters, mention_to_predicted = \
+                    get_mention_to_cluster(predicted_clusters, threshold=1)
+                pron_span = tuple(example['pronoun_span'])
+                a_pred, b_pred = False, False
 
-                    if pron_span in mention_to_predicted:
-                        pron_cluster = mention_to_predicted[pron_span]
-                        for span in pron_cluster:
-                            a_aligned = is_aligned(span, tuple(example['a_span']))
-                            b_aligned = is_aligned(span, tuple(example['b_span']))
+                if pron_span in mention_to_predicted:
+                    pron_cluster = mention_to_predicted[pron_span]
+                    for span in pron_cluster:
+                        a_aligned = is_aligned(span, tuple(example['a_span']))
+                        b_aligned = is_aligned(span, tuple(example['b_span']))
 
-                            if a_aligned:
-                                a_pred = True
-                            if b_aligned:
-                                b_pred = True
+                        if a_aligned:
+                            a_pred = True
+                        if b_aligned:
+                            b_pred = True
 
-                    if dataset == 'wsc':
-                        span_not_found = False
-                        for span in [example['a_span'], example['b_span'], example['pronoun_span']]:
-                            if tuple(span) not in mention_to_predicted:
-                                span_not_found = True
-                                break
+                if dataset == 'wsc':
+                    span_not_found = False
+                    for span in [example['a_span'], example['b_span'], example['pronoun_span']]:
+                        if tuple(span) not in mention_to_predicted:
+                            span_not_found = True
+                            break
 
-                        if span_not_found:
-                            counter['span_not_found'] += 1
+                    if span_not_found:
+                        counter['span_not_found'] += 1
 
-                        corr = ((a_pred == example['a_label']) and (b_pred == example['b_label']))
-                        log_example["correct"] = corr
-                        counter['corr'] += ((a_pred == example['a_label']) and (b_pred == example['b_label']))
-                        counter['total'] += 1
-                    elif dataset == 'gap':
-                        for gt, pred in zip([example['a_label'], example['b_label']], [a_pred, b_pred]):
-                            if gt and pred:
-                                counter['true_positive'] += 1
-                            elif gt and (not pred):
-                                counter['false_negative'] += 1
-                            elif (not gt) and (not pred):
-                                counter['true_negative'] += 1
-                            else:
-                                counter['false_positive'] += 1
+                    corr = ((a_pred == example['a_label']) and (b_pred == example['b_label']))
+                    log_example["correct"] = corr
+                    counter['corr'] += ((a_pred == example['a_label']) and (b_pred == example['b_label']))
+                    counter['total'] += 1
+                elif dataset == 'gap':
+                    for gt, pred in zip([example['a_label'], example['b_label']], [a_pred, b_pred]):
+                        if gt and pred:
+                            counter['true_positive'] += 1
+                        elif gt and (not pred):
+                            counter['false_negative'] += 1
+                        elif (not gt) and (not pred):
+                            counter['true_negative'] += 1
+                        else:
+                            counter['false_positive'] += 1
 
-                    log_example["a_pred"] = a_pred
-                    log_example["b_pred"] = b_pred
+                log_example["a_pred"] = a_pred
+                log_example["b_pred"] = b_pred
 
-                    log_example["predicted_clusters"] = predicted_clusters
+                log_example["predicted_clusters"] = predicted_clusters
 
-                    # print(log_example)
-                    f.write(json.dumps(log_example) + "\n")
+                # print(log_example)
+                f.write(json.dumps(log_example) + "\n")
 
         logger.info(log_file)
 

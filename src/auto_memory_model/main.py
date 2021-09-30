@@ -29,14 +29,14 @@ def main():
     parser.add_argument(
         '-dataset', default='joint_lop', type=str,
         choices=['all', 'joint_clop', 'joint_lop', 'joint_op',
-                 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl', 'cd2cr',
-                 'wsc', 'gap', 'character_identification'])
+                 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl',
+                 'wsc', 'gap', 'character_identification', 'ontogum'])
     parser.add_argument(
         '-conll_scorer', type=str, help='Root folder storing model runs',
         default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
     parser.add_argument('-model_size', default='large', type=str, help='Model size')
-    parser.add_argument('-max_segment_len', default=4096, type=int,
+    parser.add_argument('-max_segment_len', default=2048, type=int,
                         help='Max segment length of windowed inputs.')
     parser.add_argument('-add_speaker_tokens', default=False, action="store_true",
                         help='Max segment length of windowed inputs.')
@@ -193,12 +193,14 @@ def main():
         'quizbowl': path.join(args.base_data_dir, 'quizbowl/independent_longformer'),
         'gap': path.join(args.base_data_dir, 'gap/longformer'),
         'wsc': path.join(args.base_data_dir, 'wsc/longformer'),
+        'ontogum': path.join(args.base_data_dir, 'ontogum/longformer'),
     }
 
     conll_data_dir = {
         'ontonotes': path.join(args.base_data_dir, f'ontonotes/conll'),
         'litbank': path.join(args.base_data_dir, f'litbank/conll/{args.cross_val_split}'),
-        'quizbowl': path.join(args.base_data_dir, f'quizbowl/conll')
+        'quizbowl': path.join(args.base_data_dir, f'quizbowl/conll'),
+        'ontogum': path.join(args.base_data_dir, f'ontogum/conll'),
     }
 
     if args.add_speaker_tokens:

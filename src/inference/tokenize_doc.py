@@ -45,21 +45,28 @@ def get_tokenized_doc(doc_str, tokenizer, document_state=None):
         if len(document_state.subtoken_map):
             word_idx = document_state.subtoken_map[-1]
 
-    tokenized_doc = tokenizer.tokenize(doc_str)
+    sentences = doc_str.split("\n")
+    # print(sentences)
+    for sentence in sentences:
+        if sentence == '':
+            continue
+        tokenized_doc = tokenizer.tokenize(sentence)
+        for idx, token in enumerate(tokenized_doc):
+            word_idx += 1
+            document_state.tokens.append(token)
+            # Subtoken and token are same
+            document_state.subtokens.append(token)
+            if idx == len(tokenized_doc) - 1:
+                # End of document
+                document_state.token_end += ([True])
+            else:
+                document_state.token_end += ([True])
 
-    for idx, token in enumerate(tokenized_doc):
-        word_idx += 1
-        document_state.tokens.append(token)
-        # Subtoken and token are same
-        document_state.subtokens.append(token)
-        if idx == len(tokenized_doc) - 1:
-            # End of document
-            document_state.token_end += ([True])
-        else:
-            document_state.token_end += ([True])
+            document_state.subtoken_map.append(word_idx)
+            document_state.sentence_end.append(False)  # No info on sentence end
 
-        document_state.subtoken_map.append(word_idx)
-        document_state.sentence_end.append(False)  # No info on sentence end
+        document_state.sentence_end[-1] = True
+
     return document_state
 
 
