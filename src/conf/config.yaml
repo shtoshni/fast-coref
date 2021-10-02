@@ -1,0 +1,12 @@
+defaults:
+  - dataset: ontonotes
+  - model: model
+  - optimization: adam
+  - _self_
+
+
+metrics: ['MUC', 'Bcub', 'CEAFE']
+
+slurm:
+  time: 14280
+  id: null

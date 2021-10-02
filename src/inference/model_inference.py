@@ -1,7 +1,7 @@
 import torch
 from transformers import LongformerTokenizerFast
-from auto_memory_model.utils import action_sequences_to_clusters
-from auto_memory_model.controller.utils import pick_controller
+from memory_model.utils import action_sequences_to_clusters
+from memory_model.controller.utils import pick_controller
 from inference.tokenize_doc import tokenize_and_segment_doc, tokenize_and_segment_doc_list, flatten
 
 

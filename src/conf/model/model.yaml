@@ -1,0 +1,19 @@
+defaults:
+ - doc_encoder: transformer_encoder
+ - mem_type: unbounded
+
+memory:
+  cluster_mlp_size: 3000
+  sim_func: hadamard
+  entity_rep: wt_avg
+
+ment:
+  max_span_width: 20
+  ment_emb: attn
+  use_gold_ments: false
+  use_topk: false
+  top_span_ratio: 0.4
+
+emb_size: 20
+mlp_size: 3000
+mlp_depth: 1

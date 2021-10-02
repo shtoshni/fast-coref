@@ -3,9 +3,11 @@ import os
 from os import path
 import torch
 import logging
+from omegaconf import DictConfig, OmegaConf
+import hydra
 from collections import OrderedDict
 
-from auto_memory_model.experiment import Experiment
+from experiment import Experiment
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -42,34 +44,34 @@ def main():
                         help='Max segment length of windowed inputs.')
 
     # Mention variables
-    parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
-    parser.add_argument('-ment_emb', default='attn', choices=['attn', 'endpoint'], type=str)
-    parser.add_argument('-use_gold_ments', default=False, action="store_true")
-    parser.add_argument('-use_topk', default=False, action="store_true", help='Use topk mentions.')
-    parser.add_argument('-top_span_ratio', default=0.4, type=float,
-                        help='Ratio of top spans proposed as mentions.')
+    # parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
+    # parser.add_argument('-ment_emb', default='attn', choices=['attn', 'endpoint'], type=str)
+    # parser.add_argument('-use_gold_ments', default=False, action="store_true")
+    # parser.add_argument('-use_topk', default=False, action="store_true", help='Use topk mentions.')
+    # parser.add_argument('-top_span_ratio', default=0.4, type=float,
+    #                     help='Ratio of top spans proposed as mentions.')
 
     # Memory variables
-    parser.add_argument('-mem_type', default='unbounded',
-                        choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
-                        help="Memory type.")
-    parser.add_argument('-mlp_size', default=3000, type=int,
-                        help='MLP size used in the model')
-    parser.add_argument('-cluster_mlp_size', default=3000, type=int,
-                        help='MLP size used in the model')
-    parser.add_argument('-mlp_depth', default=1, type=int,
-                        help='Number of hidden layers in other MLPs')
-    parser.add_argument('-entity_rep', default='wt_avg', type=str,
-                        choices=['learned_avg', 'wt_avg', 'max'], help='Entity representation.')
-    parser.add_argument('-sim_func', default='hadamard', choices=['hadamard', 'cosine', 'endpoint'],
-                        help='Similarity function', type=str)
-    parser.add_argument('-emb_size', default=20, type=int,
-                        help='Embedding size of features.')
-    # Only relevant for bounded memory models
-    parser.add_argument('-max_ents', default=20, type=int,
-                        help="Number of maximum entities in memory.")
-    parser.add_argument('-eval_max_ents', default=None, type=int,
-                        help="Number of maximum entities in memory during inference.")
+    # parser.add_argument('-mem_type', default='unbounded',
+    #                     choices=['learned', 'lru', 'unbounded', 'unbounded_no_ignore'],
+    #                     help="Memory type.")
+    # parser.add_argument('-mlp_size', default=3000, type=int,
+    #                     help='MLP size used in the model')
+    # parser.add_argument('-cluster_mlp_size', default=3000, type=int,
+    #                     help='MLP size used in the model')
+    # parser.add_argument('-mlp_depth', default=1, type=int,
+    #                     help='Number of hidden layers in other MLPs')
+    # parser.add_argument('-entity_rep', default='wt_avg', type=str,
+    #                     choices=['learned_avg', 'wt_avg', 'max'], help='Entity representation.')
+    # parser.add_argument('-sim_func', default='hadamard', choices=['hadamard', 'cosine', 'endpoint'],
+    #                     help='Similarity function', type=str)
+    # parser.add_argument('-emb_size', default=20, type=int,
+    #                     help='Embedding size of features.')
+    # # Only relevant for bounded memory models
+    # parser.add_argument('-max_ents', default=20, type=int,
+    #                     help="Number of maximum entities in memory.")
+    # parser.add_argument('-eval_max_ents', default=None, type=int,
+    #                     help="Number of maximum entities in memory during inference.")
     # Dataset-specific features
     parser.add_argument('-doc_class', default=None, choices=['dialog', 'genre'],
                         help='What information of document class to use.')
@@ -241,7 +243,7 @@ def main():
     if not path.exists(log_dir):
         os.makedirs(log_dir)
 
-    config_file = path.join(args.model_dir, 'config')
+    config_file = path.join(args.model_dir, 'conf')
     with open(config_file, 'w') as f:
         for key, val in opt_dict.items():
             logging.info('%s: %s' % (key, val))
@@ -250,5 +252,12 @@ def main():
     Experiment(**vars(args))
 
 
+@hydra.main(config_path="conf", config_name="config")
+def hydra_main(cfg):
+    hydra.output_subdir = None
+    print(OmegaConf.to_yaml(cfg))
+    print(cfg.model)
+    # print(cfg.model.encoder.transformer)
+
 if __name__ == "__main__":
-    main()
+    hydra_main()

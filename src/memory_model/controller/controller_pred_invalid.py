@@ -1,8 +1,8 @@
 import torch
 
-from auto_memory_model.memory import MemoryPredInvalid
-from auto_memory_model.controller import BaseController
-from auto_memory_model.controller.utils_action import *
+from memory_model.memory import MemoryPredInvalid
+from memory_model.controller import BaseController
+from memory_model.controller.utils_action import *
 from pytorch_utils.label_smoothing import LabelSmoothingLoss
 
 

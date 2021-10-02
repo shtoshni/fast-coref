@@ -1,4 +1,4 @@
-from auto_memory_model.controller import *
+from memory_model.controller import *
 
 
 def pick_controller(mem_type='unbounded', dataset='litbank', device='cuda', **kwargs):

@@ -1,0 +1,9 @@
+defaults:
+  - transformer: longformer_large
+
+
+add_speaker_tokens: false
+speaker_start: '[SPEAKER_START]'
+speaker_end: '[SPEAKER_END]'
+
+

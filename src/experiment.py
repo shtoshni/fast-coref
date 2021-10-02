@@ -12,16 +12,16 @@ import numpy as np
 import random
 from transformers import get_linear_schedule_with_warmup, AdamW
 
-from auto_memory_model.utils import action_sequences_to_clusters
+from memory_model.utils import action_sequences_to_clusters
 from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster, is_aligned
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
-from auto_memory_model.controller import BaseController
-from auto_memory_model.controller.utils import pick_controller
+from memory_model.controller import BaseController
+from memory_model.controller.utils import pick_controller
 from data_utils.tensorize_dataset import TensorizeDataset
-from auto_memory_model.constants import CANONICAL_CLUSTER_THRESHOLD
+from memory_model.constants import CANONICAL_CLUSTER_THRESHOLD
 from pytorch_utils.optimization_utils import get_inverse_square_root_decay
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -41,7 +41,7 @@ class Experiment:
                 self.canonical_cluster_threshold[self.dataset] = 2
 
         if self.dataset == 'litbank':
-            self.update_frequency = 10  # Frequency in terms of # of documents after which logs are printed
+            self.log_frequency = 10  # Frequency in terms of # of documents after which logs are printed
 
         self.orig_data_map, self.data_iter_map, self.num_train_docs_map = {}, {}, {}
         # Load raw data
@@ -255,7 +255,7 @@ class Experiment:
 
                 example_loss = handle_example(cur_example)
 
-                if self.train_info['global_steps'] % self.update_frequency == 0:
+                if self.train_info['global_steps'] % self.log_frequency == 0:
                     logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
                         cur_example["doc_key"], example_loss,
                         (torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
@@ -445,6 +445,7 @@ class Experiment:
         logger.info("Inference time: %.2f" % inference_time)
 
         return result_dict
+
 
     @torch.no_grad()
     def targeted_eval(self, split="test", dataset="wsc"):

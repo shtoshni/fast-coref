@@ -1,0 +1,3 @@
+name: 'longformer'
+model_str: 'allenai/longformer-large-4096'
+max_segment_len: 2048

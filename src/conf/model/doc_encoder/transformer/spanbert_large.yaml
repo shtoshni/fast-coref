@@ -1,0 +1,3 @@
+name: 'spanbert'
+model_str: 'shtoshni/spanbert_coreference_large'
+max_segment_len: 512

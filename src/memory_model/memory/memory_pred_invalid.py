@@ -1,5 +1,5 @@
 import torch
-from auto_memory_model.memory import BaseMemory
+from memory_model.memory import BaseMemory
 from pytorch_utils.modules import MLP
 
 

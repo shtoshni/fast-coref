@@ -2,7 +2,7 @@ import torch.nn as nn
 from transformers import LongformerModel, AutoTokenizer
 import torch
 
-from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
+from memory_model.constants import SPEAKER_START, SPEAKER_END
 
 
 class BaseDocEncoder(nn.Module):
