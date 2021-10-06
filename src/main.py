@@ -3,8 +3,11 @@ import os
 from os import path
 import torch
 import logging
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 import hydra
+import hashlib
+import json
+
 from collections import OrderedDict
 
 from experiment import Experiment
@@ -18,30 +21,30 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Add arguments to parser
-    parser.add_argument(
-        '-base_data_dir', default='../data/', help='Root directory of data', type=str)
-    parser.add_argument('-data_dir', default=None, help='Data directory', type=str)
-    parser.add_argument('-singleton_file', default=None,
-                        help='Singleton mentions separately extracted for training.')
-    parser.add_argument('-base_model_dir', default='../models',
-                        help='Root folder storing model runs', type=str)
-    parser.add_argument('-model_dir', default=None,
-                        help='Model directory', type=str)
+    # parser.add_argument(
+    #     '-base_data_dir', default='../data/', help='Root directory of data', type=str)
+    # parser.add_argument('-data_dir', default=None, help='Data directory', type=str)
+    # parser.add_argument('-singleton_file', default=None,
+    #                     help='Singleton mentions separately extracted for training.')
+    # parser.add_argument('-base_model_dir', default='../models',
+    #                     help='Root folder storing model runs', type=str)
+    # parser.add_argument('-model_dir', default=None,
+    #                     help='Model directory', type=str)
 
-    parser.add_argument(
-        '-dataset', default='joint_lop', type=str,
-        choices=['all', 'joint_clop', 'joint_lop', 'joint_op',
-                 'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl',
-                 'wsc', 'gap', 'character_identification', 'ontogum'])
-    parser.add_argument(
-        '-conll_scorer', type=str, help='Root folder storing model runs',
-        default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
+    # parser.add_argument(
+    #     '-dataset', default='joint_lop', type=str,
+    #     choices=['all', 'joint_clop', 'joint_lop', 'joint_op',
+    #              'ontonotes', 'litbank', 'preco', 'wikicoref', 'quizbowl',
+    #              'wsc', 'gap', 'character_identification', 'ontogum'])
+    # parser.add_argument(
+    #     '-conll_scorer', type=str, help='Root folder storing model runs',
+    #     default="../resources/lrec2020-coref/reference-coreference-scorers/scorer.pl")
 
-    parser.add_argument('-model_size', default='large', type=str, help='Model size')
-    parser.add_argument('-max_segment_len', default=2048, type=int,
-                        help='Max segment length of windowed inputs.')
-    parser.add_argument('-add_speaker_tokens', default=False, action="store_true",
-                        help='Max segment length of windowed inputs.')
+    # parser.add_argument('-model_size', default='large', type=str, help='Model size')
+    # parser.add_argument('-max_segment_len', default=2048, type=int,
+    #                     help='Max segment length of windowed inputs.')
+    # parser.add_argument('-add_speaker_tokens', default=False, action="store_true",
+    #                     help='Max segment length of windowed inputs.')
 
     # Mention variables
     # parser.add_argument('-max_span_width', default=20, type=int, help='Max span width.')
@@ -73,14 +76,14 @@ def main():
     # parser.add_argument('-eval_max_ents', default=None, type=int,
     #                     help="Number of maximum entities in memory during inference.")
     # Dataset-specific features
-    parser.add_argument('-doc_class', default=None, choices=['dialog', 'genre'],
-                        help='What information of document class to use.')
-    parser.add_argument('-default_genre', default='nw', choices=["bc", "bn", "mz", "nw", "pt", "tc", "wb"],
-                        help='What information of document class to use.')
+    # parser.add_argument('-doc_class', default=None, choices=['dialog', 'genre'],
+    #                     help='What information of document class to use.')
+    # parser.add_argument('-default_genre', default='nw', choices=["bc", "bn", "mz", "nw", "pt", "tc", "wb"],
+    #                     help='What information of document class to use.')
 
     # Training params
-    parser.add_argument('-cross_val_split', default=0, type=int,
-                        help='Cross validation split to be used.')
+    # parser.add_argument('-cross_val_split', default=0, type=int,
+    #                     help='Cross validation split to be used.')
     parser.add_argument('-num_litbank_docs', default=None, type=int,
                         help='Number of litbank training docs.')
     parser.add_argument('-num_ontonotes_docs', default=None, type=int,
@@ -91,39 +94,39 @@ def main():
                         help='Number of maximum training docs loaded in memory.')
     parser.add_argument('-num_eval_docs', default=None, type=int,
                         help='Number of evaluation docs.')
-    parser.add_argument('-dropout_rate', default=0.3, type=float,
-                        help='Dropout rate')
-    parser.add_argument('-remove_singletons', default=False, action="store_true",
-                        help='Remove singletons from training and eval.')
-    parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
-                        help='Label Smoothing')
-    parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
-                        help='Mention loss computed over topk or all mentions.')
-    parser.add_argument('-normalize_loss', default=False, action="store_true",
-                        help='Normalize loss')
-    parser.add_argument('-max_evals',
-                        help='Maximum number of evals', default=20, type=int)
-    parser.add_argument('-patience', default=5, type=int,
-                        help='Maximum evaluations without improvement')
-    parser.add_argument('-seed', default=0,
-                        help='Random seed to get different runs', type=int)
-    parser.add_argument('-max_gradient_norm',
-                        help='Maximum gradient norm', default=1.0, type=float)
-    parser.add_argument('-init_lr', help="Initial learning rate",
-                        default=3e-4, type=float)
-    parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
-                        default=1e-5, type=float)
-    parser.add_argument('-lr_decay', default='linear', type=str, choices=['inv', 'linear'],
-                        help="Decay mechanism used for learning rate decay")
-    parser.add_argument('-eval_per_k_steps', default=None, type=int, help='Evaluate on dev set per k steps')
-    parser.add_argument('-update_frequency', default=500, type=int, help='Update freq')
-    parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
-                        default=True, action="store_false")
+    # parser.add_argument('-dropout_rate', default=0.3, type=float,
+    #                     help='Dropout rate')
+    # parser.add_argument('-remove_singletons', default=False, action="store_true",
+    #                     help='Remove singletons from training and eval.')
+    # parser.add_argument('-label_smoothing_wt', default=0.1, type=float,
+    #                     help='Label Smoothing')
+    # parser.add_argument('-ment_loss', default='topk', type=str, choices=['all', 'topk'],
+    #                     help='Mention loss computed over topk or all mentions.')
+    # parser.add_argument('-normalize_loss', default=False, action="store_true",
+    #                     help='Normalize loss')
+    # parser.add_argument('-max_evals',
+    #                     help='Maximum number of evals', default=20, type=int)
+    # parser.add_argument('-patience', default=5, type=int,
+    #                     help='Maximum evaluations without improvement')
+    # parser.add_argument('-seed', default=0,
+    #                     help='Random seed to get different runs', type=int)
+    # parser.add_argument('-max_gradient_norm',
+    #                     help='Maximum gradient norm', default=1.0, type=float)
+    # parser.add_argument('-init_lr', help="Initial learning rate",
+    #                     default=3e-4, type=float)
+    # parser.add_argument('-fine_tune_lr', help="Fine-tuning learning rate",
+    #                     default=1e-5, type=float)
+    # parser.add_argument('-lr_decay', default='linear', type=str, choices=['inv', 'linear'],
+    #                     help="Decay mechanism used for learning rate decay")
+    # parser.add_argument('-eval_per_k_steps', default=None, type=int, help='Evaluate on dev set per k steps')
+    # parser.add_argument('-update_frequency', default=500, type=int, help='Update freq')
+    # parser.add_argument('-not_save_model', dest='to_save_model', help="Whether to save model during training or not",
+    #                     default=True, action="store_false")
     parser.add_argument('-eval', dest='eval_model', help="Evaluate model",
                         default=False, action="store_true")
-    parser.add_argument('-slurm_id', help="Slurm ID",
-                        default=None, type=str)
-    parser.add_argument('-slurm_time', help="Time on slurm jobs", default=238 * 60, type=float)
+    # parser.add_argument('-slurm_id', help="Slurm ID",
+    #                     default=None, type=str)
+    # parser.add_argument('-slurm_time', help="Time on slurm jobs", default=238 * 60, type=float)
 
     args = parser.parse_args()
 
@@ -254,10 +257,21 @@ def main():
 
 @hydra.main(config_path="conf", config_name="config")
 def hydra_main(cfg):
-    hydra.output_subdir = None
-    print(OmegaConf.to_yaml(cfg))
-    print(cfg.model)
-    # print(cfg.model.encoder.transformer)
+    # hydra.output_subdir = None
+    # print(OmegaConf.to_yaml(cfg))
+
+    masked_copy = OmegaConf.masked_copy(cfg, ['dataset', 'model', 'trainer', 'optimizer'])
+    encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
+    hashlib.md5().update(encoded)
+
+    model_name = str(hashlib.md5().hexdigest())
+    cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, 'coref_' + model_name)
+    cfg.paths.best_model_dir = path.join(cfg.paths.model_dir , 'best')
+
+    print(cfg.paths.model_dir)
+
+    Experiment(cfg)
+
 
 if __name__ == "__main__":
     hydra_main()

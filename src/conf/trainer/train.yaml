@@ -1,4 +1,3 @@
-train: True
 dropout_rate: 0.3
 label_smoothing_wt: 0.1
 ment_loss: 'topk'

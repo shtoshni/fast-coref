@@ -29,18 +29,15 @@ logger = logging.getLogger()
 
 
 class Experiment:
-    def __init__(self, **kwargs):
-        self.__dict__.update(kwargs)
-        self.model_args = kwargs
+    def __init__(self, config):
+        self.__dict__.update(config)
+        self.model_args = config
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # Cluster threshold is used to determine the minimum size of clusters for metric calculation
         self.canonical_cluster_threshold = CANONICAL_CLUSTER_THRESHOLD
-        if self.remove_singletons:
-            if self.dataset in self.canonical_cluster_threshold:
-                self.canonical_cluster_threshold[self.dataset] = 2
 
-        if self.dataset == 'litbank':
+        if self.dataset.name == 'litbank':
             self.log_frequency = 10  # Frequency in terms of # of documents after which logs are printed
 
         self.orig_data_map, self.data_iter_map, self.num_train_docs_map = {}, {}, {}
@@ -48,16 +45,16 @@ class Experiment:
         self.load_data()
 
         self.model: BaseController = None
-        self.finetune = (self.fine_tune_lr is not None)
+        self.finetune = (self.trainer.fine_tune_lr is not None)
 
-        self.model_path = path.join(self.model_dir, 'model.pth')
-        self.best_model_path = path.join(self.best_model_dir, 'model.pth')
+        self.model_path = path.join(self.paths.model_dir, 'model.pth')
+        self.best_model_path = path.join(self.paths.best_model_dir, 'model.pth')
 
         self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
         self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
 
         # Prepare model
-        if not self.eval_model:
+        if self.train:
             self.num_training_steps = 1e6
             # Initialize model and training metadata
             do_train = self.setup_training()
@@ -69,7 +66,7 @@ class Experiment:
 
         # Prepare data
         tokenizer = self.model.get_tokenizer()
-        self.data_processor = TensorizeDataset(tokenizer, remove_singletons=self.remove_singletons)
+        self.data_processor = TensorizeDataset(tokenizer, remove_singletons=not self.keep_singletons)
         self.process_data()
 
         # Train and then test

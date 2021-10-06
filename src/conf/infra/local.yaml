@@ -1,0 +1,3 @@
+is_slurm: False
+work_dir: ~/Research/fast-coref
+

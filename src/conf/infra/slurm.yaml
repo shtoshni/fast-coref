@@ -1,0 +1,4 @@
+is_slurm: True
+time: 14280
+job_id: null
+work_dir: ~/research/fast-coref
