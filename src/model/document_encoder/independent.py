@@ -1,21 +1,13 @@
 import torch
-import torch.nn as nn
-from os import path
-import random
-from pytorch_utils.utils import get_sequence_mask, get_span_mask
-from document_encoder.base_encoder import BaseDocEncoder
+from pytorch_utils.utils import get_sequence_mask
+from model.document_encoder.base_encoder import BaseDocEncoder
 
 
 class IndependentDocEncoder(BaseDocEncoder):
-    def __init__(self, **kwargs):
-        super(IndependentDocEncoder, self).__init__(**kwargs)
+    def __init__(self, encoder_config):
+        super(IndependentDocEncoder, self).__init__(encoder_config)
 
     def forward(self, instance):
-        """
-        Encode chunks of a document.
-        batch_excerpt: C x L where C is number of chunks padded upto max length of L
-        text_length_list: list of length of chunks (length C)
-        """
         doc_tens = instance["tensorized_sent"]
         if isinstance(doc_tens, list):
             doc_tens = torch.tensor(doc_tens, device=self.device)

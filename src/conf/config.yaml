@@ -21,4 +21,5 @@ paths:
   base_model_dir: ${infra.work_dir}/models
   model_dir: null
   best_model_dir: null
+  model_file: 'model.pth'
 

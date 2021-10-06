@@ -1,6 +1,26 @@
 from coref_utils.utils import get_mention_to_cluster_idx
 
 
+def action_sequences_to_clusters(actions, mentions):
+    clusters = []
+    cell_to_clusters = {}
+
+    for mention, (cell_idx, action_type) in zip(mentions, actions):
+        if action_type == 'c':
+            cell_to_clusters[cell_idx].append(mention)
+        elif action_type == 'o':
+            # Overwrite
+            if cell_idx in cell_to_clusters:
+                # Remove the old cluster and initialize the new
+                clusters.append(cell_to_clusters[cell_idx])
+            cell_to_clusters[cell_idx] = [mention]
+
+    for cell_idx, cluster in cell_to_clusters.items():
+        clusters.append(cluster)
+
+    return clusters
+
+
 def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
     actions = []
     cell_counter = 0
@@ -23,7 +43,7 @@ def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
     return actions
 
 
-def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):
+def get_actions_learned(pred_mentions, gt_clusters, max_ents):
     # Useful data structures
     pred_mentions = [tuple(mention) for mention in pred_mentions]
     mention_to_cluster = get_mention_to_cluster_idx(gt_clusters)
@@ -39,7 +59,7 @@ def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):
     for mention in pred_mentions:
         used_cell_idx = None
         if mention not in mention_to_cluster:
-            # Not a mention
+            # Invalid mention - Mention proposal module can propose spurious spans
             actions.append((-1, 'i'))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
@@ -50,7 +70,7 @@ def get_actions_learned_bounded(pred_mentions, gt_clusters, max_ents):
                 used_cell_idx = cluster_to_cell[mention_cluster]
             else:
                 # Cluster is not being tracked
-                # Find the cell with the least regret that we can overwrite to
+                # Find the cell with the least "regret" that we can overwrite to
                 # If the regret is non-positive i.e. we would be missing out on > mentions
                 # of a cluster being currently tracked than the new mention cluster then we
                 # don't perform overwrite.

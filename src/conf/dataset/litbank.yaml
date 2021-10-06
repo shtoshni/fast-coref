@@ -4,4 +4,5 @@ cluster_threshold: 1
 cross_val_split: 0
 all_eval: true
 num_test_docs: 10
+log_frequency: 10  # Number of training documents processed for each loss logging
 

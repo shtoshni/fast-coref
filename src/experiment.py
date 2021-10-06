@@ -12,16 +12,15 @@ import numpy as np
 import random
 from transformers import get_linear_schedule_with_warmup, AdamW
 
-from memory_model.utils import action_sequences_to_clusters
+from model.utils import action_sequences_to_clusters
 from data_utils.utils import load_dataset, load_eval_dataset
 from coref_utils.conll import evaluate_conll
 from coref_utils.utils import get_mention_to_cluster, is_aligned
 from coref_utils.metrics import CorefEvaluator
 import pytorch_utils.utils as utils
-from memory_model.controller import BaseController
-from memory_model.controller.utils import pick_controller
+
+from model.entity_ranking_model import EntityRankingModel
 from data_utils.tensorize_dataset import TensorizeDataset
-from memory_model.constants import CANONICAL_CLUSTER_THRESHOLD
 from pytorch_utils.optimization_utils import get_inverse_square_root_decay
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
@@ -30,52 +29,37 @@ logger = logging.getLogger()
 
 class Experiment:
     def __init__(self, config):
-        self.__dict__.update(config)
-        self.model_args = config
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.config = config
 
-        # Cluster threshold is used to determine the minimum size of clusters for metric calculation
-        self.canonical_cluster_threshold = CANONICAL_CLUSTER_THRESHOLD
+        # Step 1 - Build model
+        self._build_model()
 
-        if self.dataset.name == 'litbank':
-            self.log_frequency = 10  # Frequency in terms of # of documents after which logs are printed
+        # Step 2 - Load Data - Data processing choices such as tokenizer will depend on the model
+        # self._build_data()
+        #
+        # # Step 3 - Load from previous checkpoint
+        # self._load_previous_checkpoint()
+        #
+        # # Step 4 - Setup training - This step depends on whether training is being resumed or not
+        # self._setup_training()
+        #
+        # # Step 5 - Train the model
+        # if self.is_training_remaining():
+        #     self.train()
+        #
+        # # Step 6 - Perform final evaluation
+        # self.load_model(self.best_model_path, model_type='best')
+        # self.perform_final_eval()
 
-        self.orig_data_map, self.data_iter_map, self.num_train_docs_map = {}, {}, {}
-        # Load raw data
-        self.load_data()
+    def _build_model(self):
+        model_params = self.config.model
+        train_params = self.config.trainer
+        self.model = EntityRankingModel(model_params, train_params)
 
-        self.model: BaseController = None
-        self.finetune = (self.trainer.fine_tune_lr is not None)
-
-        self.model_path = path.join(self.paths.model_dir, 'model.pth')
-        self.best_model_path = path.join(self.paths.best_model_dir, 'model.pth')
-
-        self.optimizer, self.optim_scheduler, self.scaler = {}, {}, None
-        self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0}
-
-        # Prepare model
-        if self.train:
-            self.num_training_steps = 1e6
-            # Initialize model and training metadata
-            do_train = self.setup_training()
-        else:
-            do_train = False
-
-        if not do_train:
-            self.setup_eval()
-
-        # Prepare data
-        tokenizer = self.model.get_tokenizer()
-        self.data_processor = TensorizeDataset(tokenizer, remove_singletons=not self.keep_singletons)
-        self.process_data()
-
-        # Train and then test
-        if do_train:
-            self.train()
-            # Load best model after training is done
-            self.load_model(self.best_model_path, model_type='best')
-
-        self.perform_final_eval()
+    def _load_previous_checkpoint(self):
+        conf_paths = self.config.paths
+        self.model_path = path.join(conf_paths.model_dir, conf_paths.model_file)
+        self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_file)
 
     def load_data(self):
         for dataset, data_dir in self.data_dir_dict.items():
