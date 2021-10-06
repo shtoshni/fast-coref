@@ -2,4 +2,3 @@ init_lr: 3e-4
 fine_tune_lr: 1e-5
 max_gradient_norm: 1.0
 lr_decay: linear
-log_frequency: 500
