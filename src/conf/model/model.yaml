@@ -11,6 +11,7 @@ mention_params:
   emb_size: 20
   mlp_size: 3000
   mlp_depth: 1
+  ment_threshold: 0.0
   ment_emb_to_size_factor:
     attn: 3
     endpoint: 2
