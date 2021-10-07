@@ -269,6 +269,7 @@ def hydra_main(cfg):
     cfg.paths.best_model_dir = path.join(cfg.paths.model_dir , 'best')
 
     print(cfg.paths.model_dir)
+    print(cfg.dataset)
 
     Experiment(cfg)
 

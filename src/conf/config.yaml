@@ -1,5 +1,7 @@
 defaults:
-  - dataset: ontonotes
+  - dataset:
+    - ontonotes
+    - litbank
   - model: model
   - optimizer: adam
   - trainer: train
@@ -22,4 +24,5 @@ paths:
   model_dir: null
   best_model_dir: null
   model_file: 'model.pth'
+  model_name: null
 

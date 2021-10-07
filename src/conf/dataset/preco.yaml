@@ -1,6 +1,0 @@
-name: "preco"
-real_name: "PreCo"
-cluster_threshold: 1
-all_eval: true
-num_test_docs: 500
-log_frequency: 1000  # Number of training documents processed for each loss logging

@@ -4,7 +4,7 @@ import torch.nn as nn
 from model.document_encoder import IndependentDocEncoder
 from pytorch_utils.modules import MLP
 
-from utils import transform_gold_mentions, sort_mentions
+from model.mention_proposal.utils import transform_gold_mentions, sort_mentions
 
 
 class MentionProposalModule(nn.Module):
@@ -50,9 +50,6 @@ class MentionProposalModule(nn.Module):
 			output_size=1, num_hidden_layers=mention_params.mlp_depth, bias=True,
 			drop_module=self.drop_module
 		)
-
-	def get_tokenizer(self):
-		return self.doc_encoder.get_tokenizer()
 
 	def get_params(self, named=False):
 		encoder_params, mem_params = [], []
@@ -133,15 +130,15 @@ class MentionProposalModule(nn.Module):
 		filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
 		return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-	def get_pred_mentions(self, document, encoded_doc) -> dict:
+	def get_pred_mentions(self, document, encoded_doc, ment_threshold=0.0) -> dict:
 		num_tokens = encoded_doc.shape[0]
 		num_words = document["subtoken_map"][-1] - document["subtoken_map"][0] + 1
-		filt_cand_starts, filt_cand_ends, flat_cand_mask = self.get_candidate_endpoints(encoded_doc, document)
+		cand_starts, cand_ends, cand_mask = self.get_candidate_endpoints(encoded_doc, document)
 
-		span_embs = self.get_span_embeddings(encoded_doc, filt_cand_starts, filt_cand_ends)
+		span_embs = self.get_span_embeddings(encoded_doc, cand_starts, cand_ends)
 
 		mention_logits = torch.squeeze(self.mention_mlp(span_embs), dim=-1)
-		mention_logits += self.get_mention_width_scores(filt_cand_starts, filt_cand_ends)
+		mention_logits += self.get_mention_width_scores(cand_starts, cand_ends)
 
 		del span_embs  # Span embeddings not required anymore
 
@@ -149,7 +146,7 @@ class MentionProposalModule(nn.Module):
 		if self.training:
 			k = int(self.mention_params.top_span_ratio * num_words)
 			topk_indices = torch.topk(mention_logits, k)[1]
-			filt_gold_mentions = self.get_flat_gold_mentions(document["clusters"], num_tokens, flat_cand_mask)
+			filt_gold_mentions = self.get_flat_gold_mentions(document["clusters"], num_tokens, cand_mask)
 
 			if self.mention_params.ment_loss == 'all':
 				mention_loss = self.loss_fn(mention_logits, filt_gold_mentions)
@@ -167,11 +164,10 @@ class MentionProposalModule(nn.Module):
 				k = int(self.mention_params.top_span_ratio * num_words)
 				topk_indices = torch.topk(mention_logits, k)[1]
 			else:
-				topk_indices = torch.squeeze(
-					(mention_logits >= self.mention_params.ment_threshold).nonzero(as_tuple=False), dim=1)
+				topk_indices = torch.squeeze((mention_logits >= ment_threshold).nonzero(as_tuple=False), dim=1)
 
-		topk_starts = filt_cand_starts[topk_indices]
-		topk_ends = filt_cand_ends[topk_indices]
+		topk_starts = cand_starts[topk_indices]
+		topk_ends = cand_ends[topk_indices]
 		topk_scores = mention_logits[topk_indices]
 
 		output_dict['ment_starts'], output_dict['ment_ends'], sorted_indices = \
@@ -194,9 +190,9 @@ class MentionProposalModule(nn.Module):
 		pred_starts, pred_ends = output_dict['ment_starts'], output_dict['ment_ends']
 
 		# Stack the starts and ends to get the mention tuple
-		output_dict['mentions'] = torch.stack((pred_starts, pred_ends), dim=1)
+		output_dict['ments'] = torch.stack((pred_starts, pred_ends), dim=1)
 		# Get mention embeddings
 		mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
-		output_dict['mention_emb_list'] = torch.unbind(mention_embs, dim=0)
+		output_dict['ment_emb_list'] = torch.unbind(mention_embs, dim=0)
 
 		return output_dict

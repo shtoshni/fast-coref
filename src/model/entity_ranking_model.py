@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 
 from model.mention_proposal import MentionProposalModule
-from model.utils import get_mention_to_cluster_idx, get_actions_unbounded_fast
 from pytorch_utils.label_smoothing import LabelSmoothingLoss
+from model.utils import get_gt_actions
 
 
 class EntityRankingModel(nn.Module):
@@ -16,16 +16,8 @@ class EntityRankingModel(nn.Module):
 		#     hsize=self.ment_emb_to_size_factor[self.ment_emb] * self.hsize + self.emb_size,
 		#     drop_module=self.drop_module, num_feats=self.num_feats, **kwargs).to(self.device)
 
-	@staticmethod
-	def get_gt_actions(pred_mentions, document):
-		if "clusters" in document:
-			# Ground truth is avaliable
-			mention_to_cluster = get_mention_to_cluster_idx(document["clusters"])
-			return get_actions_unbounded_fast(pred_mentions, mention_to_cluster)
-		else:
-			# Don't have ground truth clusters i.e. running it in the wild
-			# Generate dummy actions
-			return [(-1, 'i')] * len(pred_mentions)
+	def get_tokenizer(self):
+		return self.mention_proposer.doc_encoder.get_tokenizer()
 
 	def new_ignore_tuple_to_idx(self, action_tuple_list):
 		action_indices = []
@@ -83,31 +75,44 @@ class EntityRankingModel(nn.Module):
 		return coref_loss
 
 	def forward_training(self, document):
-		pred_mentions, mention_emb_list, _, train_vars = self.get_mention_embs(document)
+		# Initialize loss dictionary
+		loss_dict = {'total': None}
+
+		proposer_output_dict = self.mention_proposer(document)
+
+		pred_mentions = proposer_output_dict.get('ments', None)
+		if pred_mentions is None:
+			return loss_dict
+
+		mention_emb_list = proposer_output_dict['ment_emb_list']
 
 		pred_mentions_list = pred_mentions.tolist()
-		gt_actions = self.get_gt_actions(pred_mentions_list, document)
+		gt_actions = get_gt_actions(pred_mentions_list, document)
 
 		metadata = self.get_metadata(document)
-
 		coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
-		if 'mention_loss' in train_vars:
-			loss = {'total': train_vars['mention_loss'], 'entity': train_vars['mention_loss']}
 
-			if len(coref_new_list) > 0:
-				coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
-				loss['total'] += coref_loss
-				loss['coref'] = coref_loss
-		else:
-			loss = {'total': None}
+		if 'ment_loss' in proposer_output_dict:
+			loss_dict = {'total': proposer_output_dict['ment_loss'], 'entity': proposer_output_dict['ment_loss']}
 
-		return loss
+		if len(coref_new_list) > 0:
+			coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
+			loss_dict['total'] += coref_loss
+			loss_dict['coref'] = coref_loss
+
+		return loss_dict
 
 	def forward(self, document):
-		metadata = self.get_metadata(document)
-
+		'''
+		Process document chunk by chunk.
+		Pass along the previous clusters
+		'''
+		# Initialize lists to track all the actions taken, mentions predicted across the chunks
 		action_list, pred_mentions_list, gt_actions, mention_scores = [], [], [], []
-		last_memory, token_offset = None, 0
+		# Initialize entity clusters and current document token offset
+		entity_cluster_states, token_offset = None, 0
+
+		metadata = self.get_metadata(document)
 
 		for idx in range(0, len(document["sentences"])):
 			num_tokens = len(document["sentences"][idx])
@@ -136,18 +141,21 @@ class EntityRankingModel(nn.Module):
 				if key not in cur_example:
 					cur_example[key] = document[key]
 
-			cur_pred_mentions, cur_mention_emb_list, cur_mention_scores = self.get_mention_embs(cur_example)[:3]
-			if cur_pred_mentions is None:
+			proposer_output_dict = self.mention_proposer(cur_example)
+			if proposer_output_dict.get('ments', None) is None:
+				token_offset += num_tokens
 				continue
-			cur_pred_mentions = cur_pred_mentions + token_offset
+			cur_pred_mentions = proposer_output_dict.get('ments') + token_offset
 			token_offset += num_tokens
 
 			pred_mentions_list.extend(cur_pred_mentions.tolist())
-			mention_scores.extend(cur_mention_scores.tolist())
+			mention_scores.extend(proposer_output_dict['ment_scores'].tolist())
 
-			cur_action_list, last_memory = self.memory_net(
-				cur_pred_mentions, cur_mention_emb_list, metadata, memory_init=last_memory)
+			# Pass along entity clusters from previous chunks while processing next chunks
+			cur_action_list, entity_cluster_states = self.memory_net(
+				cur_pred_mentions, proposer_output_dict['ment_emb_list'], metadata,
+				memory_init=entity_cluster_states)
 			action_list.extend(cur_action_list)
 
-		gt_actions = self.get_actions(pred_mentions_list, document)
+		gt_actions = get_gt_actions(pred_mentions_list, document)
 		return action_list, pred_mentions_list, gt_actions, mention_scores

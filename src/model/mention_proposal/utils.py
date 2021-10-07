@@ -32,7 +32,7 @@ def transform_gold_mentions(self, document):
 	output_dict = {
 		'ment_starts': topk_starts, 'ment_ends': topk_ends,
 		# Fake mention score
-		'pred_scores': torch.tensor([1.0] * len(mentions), device=self.device)
+		'ment_scores': torch.tensor([1.0] * len(mentions), device=self.device)
 	}
 
 	return output_dict
