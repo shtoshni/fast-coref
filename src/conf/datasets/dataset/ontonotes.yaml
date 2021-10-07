@@ -1,0 +1,9 @@
+name: "ontonotes"
+real_name: "OntoNotes"
+cluster_threshold: 2
+doc_class: null
+default_genre: "nw"
+genres: ["bc", "bn", "mz", "nw", "pt", "tc", "wb"]
+all_eval: true
+num_test_docs: 348
+log_frequency: 250  # Number of training documents processed for each loss logging

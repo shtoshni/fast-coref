@@ -1,0 +1,4 @@
+name: "gap"
+real_name: "Gendered Ambiguous Pronoun (GAP)"
+all_eval: false
+num_test_docs: 2000
