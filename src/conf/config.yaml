@@ -1,7 +1,5 @@
 defaults:
-  - dataset:
-    - ontonotes
-    - litbank
+  - datasets: joint
   - model: model
   - optimizer: adam
   - trainer: train
@@ -25,4 +23,5 @@ paths:
   best_model_dir: null
   model_file: 'model.pth'
   model_name: null
+  model_name_prefix: 'coref_'
 

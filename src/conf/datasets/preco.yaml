@@ -1,0 +1,9 @@
+preco:
+  name: "preco"
+  real_name: "PreCo"
+  cluster_threshold: 1
+  targeted_eval: False
+  num_train_docs: 36120
+  num_dev_docs: 500
+  num_test_docs: 500
+  log_frequency: 3000  # Number of training documents processed for each loss logging

@@ -1,0 +1,6 @@
+quizbowl:
+  name: "quizbowl"
+  real_name: "QuizBowl"
+  cluster_threshold: 1
+  targeted_eval: False
+  num_test_docs: 400

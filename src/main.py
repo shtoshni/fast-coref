@@ -259,17 +259,17 @@ def main():
 def hydra_main(cfg):
     # hydra.output_subdir = None
     # print(OmegaConf.to_yaml(cfg))
-
     masked_copy = OmegaConf.masked_copy(cfg, ['dataset', 'model', 'trainer', 'optimizer'])
     encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
     hashlib.md5().update(encoded)
 
     model_name = str(hashlib.md5().hexdigest())
-    cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, 'coref_' + model_name)
+    cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, cfg.paths.model_name_prefix + model_name)
     cfg.paths.best_model_dir = path.join(cfg.paths.model_dir , 'best')
 
-    print(cfg.paths.model_dir)
-    print(cfg.dataset)
+    # print(cfg.paths.model_dir)
+    # print(cfg.datasets)
+    # print(cfg)
 
     Experiment(cfg)
 

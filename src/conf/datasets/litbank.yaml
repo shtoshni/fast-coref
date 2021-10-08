@@ -1,0 +1,11 @@
+litbank:
+  name: "litbank"
+  real_name: "LitBank"
+  cluster_threshold: 1
+  cross_val_split: 0
+  targeted_eval: False
+  num_train_docs: 80
+  num_dev_docs: 10
+  num_test_docs: 10
+  log_frequency: 10  # Number of training documents processed for each loss logging
+
