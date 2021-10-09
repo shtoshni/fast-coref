@@ -1,6 +1,5 @@
 wikicoref:
-  name: "wikicoref"
-  real_name: "WikiCoref"
+  name: "WikiCoref"
   cluster_threshold: 2
   targeted_eval: False
   num_test_docs: 30

@@ -8,12 +8,12 @@ from model.memory.entity_memory import EntityMemory
 
 
 class EntityRankingModel(nn.Module):
-	def __init__(self, model_config, train_config):
+	def __init__(self, model_config, dropout_rate=0.0):
 		super(EntityRankingModel, self).__init__()
 		self.config = model_config
 
 		# Dropout module - Used during training
-		self.drop_module = nn.Dropout(p=train_config.dropout_rate)
+		self.drop_module = nn.Dropout(p=dropout_rate)
 
 		# Document encoder + Mention proposer
 		self.mention_proposer = MentionProposalModule(model_config, drop_module=self.drop_module)

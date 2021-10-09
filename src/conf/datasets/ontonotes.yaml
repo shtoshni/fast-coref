@@ -1,6 +1,5 @@
 ontonotes:
-  name: "ontonotes"
-  real_name: "OntoNotes"
+  name: "OntoNotes"
   cluster_threshold: 2  # Singletons are ignored for evaluation (also not annotated)
   targeted_eval: False
   num_train_docs: 2802

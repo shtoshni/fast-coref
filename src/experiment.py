@@ -32,11 +32,11 @@ class Experiment:
         self.config = config
 
         # Step 1 - Build model
-        self._build_model()
+        # self._build_model()
 
         # Step 2 - Load Data - Data processing choices such as tokenizer will depend on the model
-        # self._build_data()
-        #
+        self._load_data()
+
         # # Step 3 - Load from previous checkpoint
         # self._load_previous_checkpoint()
         #
@@ -53,31 +53,41 @@ class Experiment:
 
     def _build_model(self):
         model_params = self.config.model
-        train_params = self.config.trainer
-        self.model = EntityRankingModel(model_params, train_params)
+        dropout_rate = self.config.trainer.dropout_rate
+        self.model = EntityRankingModel(model_params, dropout_rate=dropout_rate)
+
+    def _load_data(self):
+        self.orig_data_map, self.num_train_docs_map = {}, {}
+
+        eval_model = (not self.config.train)
+        max_segment_len = self.config.model.doc_encoder.transformer.max_segment_len
+        model_name = self.config.model.doc_encoder.transformer.name
+        base_data_dir = path.abspath(self.config.paths.base_data_dir)
+
+        for dataset_name, attributes in self.config.datasets.items():
+            num_train_docs = attributes.get('num_train_docs', None)
+            num_eval_docs = attributes.get('num_eval_docs', None)
+            num_test_docs = attributes.get('num_test_docs', None)
+            singleton_file = attributes.get('singleton_file', None)
+            data_dir = path.join(path.join(base_data_dir, dataset_name), model_name)
+
+            if eval_model:
+                self.orig_data_map[dataset_name] = load_eval_dataset(
+                    data_dir, max_segment_len=max_segment_len,
+                    num_test_docs=num_test_docs
+                )
+            else:
+                self.num_train_docs_map[dataset_name] = attributes.get('num_train_docs', None)
+                self.orig_data_map[dataset_name] = load_dataset(
+                    data_dir, singleton_file=singleton_file,
+                    num_train_docs=num_train_docs, num_eval_docs=num_eval_docs,
+                    num_test_docs=num_test_docs,
+                )
 
     def _load_previous_checkpoint(self):
         conf_paths = self.config.paths
         self.model_path = path.join(conf_paths.model_dir, conf_paths.model_file)
         self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_file)
-
-    def load_data(self):
-        for dataset, data_dir in self.data_dir_dict.items():
-            if dataset == 'ontonotes':
-                self.num_train_docs_map[dataset] = self.num_ontonotes_docs
-            elif dataset == 'preco':
-                self.num_train_docs_map[dataset] = self.num_preco_docs
-            elif dataset == 'litbank':
-                self.num_train_docs_map[dataset] = self.num_litbank_docs
-
-            if self.eval_model:
-                self.orig_data_map[dataset] = load_eval_dataset(
-                    data_dir, dataset=dataset, max_segment_len=self.max_segment_len,
-                    num_eval_docs=self.num_eval_docs)
-            else:
-                self.orig_data_map[dataset] = load_dataset(
-                    data_dir, dataset=dataset, singleton_file=self.singleton_file,
-                    num_train_docs=self.num_train_docs, num_eval_docs=self.num_eval_docs)
 
     def process_data(self):
         if self.eval_model:

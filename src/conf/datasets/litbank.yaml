@@ -1,6 +1,5 @@
 litbank:
-  name: "litbank"
-  real_name: "LitBank"
+  name: "LitBank"
   cluster_threshold: 1
   cross_val_split: 0
   targeted_eval: False

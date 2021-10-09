@@ -1,6 +1,5 @@
 preco:
-  name: "preco"
-  real_name: "PreCo"
+  name: "PreCo"
   cluster_threshold: 1
   targeted_eval: False
   num_train_docs: 36120

@@ -1,6 +1,5 @@
 character_identification:
-  name: "character_identification"
-  real_name: "Character Identification"
+  name: "Character Identification"
   cluster_threshold: 1
   targeted_eval: False
   num_train_docs: 987

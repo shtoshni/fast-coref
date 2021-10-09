@@ -1,5 +1,4 @@
 wsc:
-  name: "wsc"
-  real_name: "Winograd Schema Challenge"
+  name: "Winograd Schema Challenge"
   targeted_eval: True
   num_test_docs: 271
