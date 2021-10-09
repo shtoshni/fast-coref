@@ -8,14 +8,17 @@ from model.mention_proposal.utils import transform_gold_mentions, sort_mentions
 
 
 class MentionProposalModule(nn.Module):
-	def __init__(self, model_config, train_config):
+	def __init__(self, model_config, drop_module=None):
 		super(MentionProposalModule, self).__init__()
 
 		self.model_config = model_config
-		self.mention_params = self.model_config.mention_params
-		self.doc_encoder = IndependentDocEncoder(model_config.doc_encoder)
-		self.drop_module = nn.Dropout(p=train_config.dropout_rate)
+		self.drop_module = drop_module
 
+		# Encoder
+		self.doc_encoder = IndependentDocEncoder(model_config.doc_encoder)
+
+		# Mention proposal model
+		self.mention_params = self.model_config.mention_params
 		self._build_model(
 			mention_params=self.mention_params,
 			hidden_size=self.doc_encoder.hidden_size)
@@ -40,10 +43,10 @@ class MentionProposalModule(nn.Module):
 		if ment_emb_type == 'attn':
 			self.mention_attn = nn.Linear(hidden_size, 1).to(self.device)
 
+		self.span_emb_size = ment_emb_to_size_factor * hidden_size + mention_params.emb_size
 		self.mention_mlp = MLP(
-			input_size=ment_emb_to_size_factor * hidden_size + mention_params.emb_size,
-			hidden_size=mention_params.mlp_size, output_size=1, bias=True,
-			drop_module=self.drop_module, num_hidden_layers=mention_params.mlp_depth
+			input_size=self.span_emb_size, hidden_size=mention_params.mlp_size, output_size=1,
+			bias=True, drop_module=self.drop_module, num_hidden_layers=mention_params.mlp_depth
 		)
 		self.span_width_mlp = MLP(
 			input_size=mention_params.emb_size, hidden_size=mention_params.mlp_size,

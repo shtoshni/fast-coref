@@ -8,7 +8,7 @@ ontonotes:
   num_test_docs: 348
   log_frequency: 250  # Number of training documents processed for each loss logging
   # OntoNotes specific attributes
-  use_genre_feature: False  # Whether to use document genre as a feature or not
-  default_genre: "nw"
-  genres: [ "bc", "bn", "mz", "nw", "pt", "tc", "wb" ]
+#  use_genre_feature: False  # Whether to use document genre as a feature or not
+#  default_genre: "nw"
+#  genres: [ "bc", "bn", "mz", "nw", "pt", "tc", "wb" ]
   singleton_file: null  # File path with pseudo-singletons
