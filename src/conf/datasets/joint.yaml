@@ -1,7 +1,7 @@
 defaults:
+  - litbank
   - ontonotes
   - preco
-  - litbank
 
 #ontonotes:
 #  - ontonotes/num_train_docs: 500

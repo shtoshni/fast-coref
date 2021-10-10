@@ -1,5 +1,7 @@
 wikicoref:
   name: "WikiCoref"
   cluster_threshold: 2
+  canonical_cluster_threshold: 2
   targeted_eval: False
   num_test_docs: 30
+  has_conll: True

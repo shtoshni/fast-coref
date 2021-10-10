@@ -1,4 +1,4 @@
-is_slurm: True
+is_local: False
 time: 14280
 job_id: null
-work_dir: ~/research/fast-coref
+work_dir: /share/data/speech/shtoshni/research/fast-coref

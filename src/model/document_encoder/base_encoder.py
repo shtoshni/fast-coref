@@ -24,7 +24,7 @@ class BaseDocEncoder(nn.Module):
         self.tokenizer = AutoTokenizer.from_pretrained(model_str)
         if config.add_speaker_tokens:
             self.tokenizer.add_special_tokens({
-                'additional_special_tokens': [config.SPEAKER_START, config.SPEAKER_END]
+                'additional_special_tokens': [config.speaker_start, config.speaker_end]
             })
 
             self.lm_encoder.resize_token_embeddings(len(self.tokenizer))
@@ -42,5 +42,5 @@ class BaseDocEncoder(nn.Module):
     def to_add_speaker_tokens(self):
         return self.add_speaker_tokens
 
-    def forward(self, example):
-        return
+    def forward(self, document):
+        raise NotImplementedError

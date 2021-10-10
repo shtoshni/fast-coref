@@ -1,0 +1,244 @@
+import os
+import logging
+import torch
+import time
+import json
+from os import path
+from collections import OrderedDict, Counter
+
+from coref_utils.metrics import CorefEvaluator
+from coref_utils.conll import evaluate_conll
+from coref_utils.utils import get_mention_to_cluster, is_aligned
+
+from model.utils import action_sequences_to_clusters
+from model.entity_ranking_model import EntityRankingModel
+
+logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger()
+
+
+def full_coref_evaluation(
+				config, model: EntityRankingModel, data_iter_map, dataset, split='dev',
+				final_eval=False, conll_data_dir=None):
+	"""Full coreference evaluation."""
+	model.eval()
+
+	# Measure time
+	inference_time = 0.0
+
+	dataset_config = config.datasets[dataset]
+	cluster_threshold = dataset_config['cluster_threshold']
+
+	log_dir = path.join(config.paths.model_dir, dataset)
+	if not path.exists(log_dir):
+		os.makedirs(log_dir)
+	gold_ment_str = ''
+	if config.model.mention_params.use_gold_ments:
+		gold_ment_str = '_gold'
+
+	log_file = path.join(log_dir, split + gold_ment_str + ".log.jsonl")
+	with open(log_file, 'w') as f:
+		# Capture the auxiliary action accuracy
+		corr_actions, total_actions = 0.0, 0.0
+		oracle_evaluator, evaluator = CorefEvaluator(), CorefEvaluator()
+		coref_predictions, subtoken_maps = {}, {}
+
+		logger.info(f"Evaluating on {len(data_iter_map[split][dataset])} examples")
+		for example in data_iter_map[split][dataset]:
+			start_time = time.time()
+			action_list, pred_mentions, gt_actions, mention_scores = model(example)
+			# Predicted cluster
+			raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+			predicted_clusters, mention_to_predicted = \
+				get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
+			gold_clusters, mention_to_gold = \
+				get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
+			evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
+
+			elapsed_time = time.time() - start_time
+			inference_time += elapsed_time
+
+			coref_predictions[example["doc_key"]] = predicted_clusters
+			subtoken_maps[example["doc_key"]] = example["subtoken_map"]
+
+			total_actions += len(action_list)
+
+			# Oracle clustering
+			oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
+			oracle_clusters, mention_to_oracle = \
+				get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
+			oracle_evaluator.update(oracle_clusters, gold_clusters, mention_to_oracle, mention_to_gold)
+
+			log_example = dict(example)
+			log_example["pred_mentions"] = pred_mentions
+			log_example["mention_scores"] = mention_scores
+			if cluster_threshold != 1:
+				# For cluster threshold 1, raw and processed clusters are one and the same
+				log_example["raw_predicted_clusters"] = raw_predicted_clusters
+			log_example["pred_actions"] = action_list
+			log_example["predicted_clusters"] = predicted_clusters
+
+			del log_example["tensorized_sent"]
+			for key in list(log_example.keys()):
+				if isinstance(log_example[key], torch.Tensor):
+					del log_example[key]
+
+			f.write(json.dumps(log_example) + "\n")
+
+		# Print individual metrics
+		result_dict = OrderedDict()
+		perf_str = ""
+		for indv_metric, indv_evaluator in zip(config.metrics, evaluator.evaluators):
+			perf_str += ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
+			result_dict[indv_metric] = OrderedDict()
+			result_dict[indv_metric]['recall'] = round(indv_evaluator.get_recall() * 100, 1)
+			result_dict[indv_metric]['precision'] = round(indv_evaluator.get_precision() * 100, 1)
+			result_dict[indv_metric]['fscore'] = round(indv_evaluator.get_f1() * 100, 1)
+
+		result_dict['fscore'] = round(evaluator.get_f1() * 100, 1)
+		logger.info("F-score: %.1f %s" % (result_dict['fscore'], perf_str))
+
+		try:
+			# Check if the dataset has CoNLL annotations to begin with
+			if not dataset_config.get('has_conll', False):
+				return result_dict
+
+			# (1) Only use CoNLL evaluator script for final evaluation
+			# (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
+			# (3) Check if the scorer and CoNLL annotation directory exist
+			is_canonical = (dataset_config.cluster_threshold == dataset_config.canonical_cluster_threshold)
+			path_exists_bool = path.exists(config.paths.conll_scorer) and path.exists(conll_data_dir[dataset])
+
+			if final_eval and is_canonical and path_exists_bool:
+				gold_path = path.join(conll_data_dir[dataset], f'{split}.conll')
+				prediction_file = path.join(log_dir, f'{split}.conll')
+				conll_results = evaluate_conll(
+					config.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
+
+				for indv_metric in config.indv_metrics_list:
+					result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
+					result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
+					result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)
+
+				average_f1 = sum(results["f"] for results in conll_results.values()) / len(conll_results)
+				result_dict['fscore'] = round(average_f1, 1)
+
+				logger.info(
+					"(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
+					% (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"], conll_results['ceafe']["f"]))
+				logger.info("Prediction file: %s" % prediction_file)
+		except AttributeError:
+			pass
+
+		logger.info("Oracle F-score: %.3f" % oracle_evaluator.get_prf()[2])
+		logger.info(log_file)
+		logger.handlers[0].flush()
+
+	logger.info("Inference time: %.2f" % inference_time)
+
+	return result_dict
+
+
+def targeted_coref_evaluation(
+				config, model: EntityRankingModel, data_iter_map, dataset, split="test"):
+	model.eval()
+
+	# Set up logging paths
+	log_dir = path.join(config.paths.model_dir, dataset)
+	if not path.exists(log_dir):
+		os.makedirs(log_dir)
+	log_file = path.join(log_dir, split + ".log.jsonl")
+
+	with open(log_file, 'w') as f:
+		logger.info(f"Evaluating on {len(data_iter_map[split][dataset])} examples")
+		# Counter for keeping track of the key stats
+		counter = Counter()
+		for document in data_iter_map[split][dataset]:
+			action_list, pred_mentions, gt_actions, mention_scores = model(document)
+			predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+
+			log_example = dict(document)
+			del log_example["tensorized_sent"]
+			for key in list(log_example.keys()):
+				if isinstance(log_example[key], torch.Tensor):
+					del log_example[key]
+
+			predicted_clusters, mention_to_predicted = \
+				get_mention_to_cluster(predicted_clusters, threshold=1)
+			pron_span = tuple(document['pronoun_span'])
+			a_pred, b_pred = False, False
+
+			if pron_span in mention_to_predicted:
+				pron_cluster = mention_to_predicted[pron_span]
+				for span in pron_cluster:
+					a_aligned = is_aligned(span, tuple(document['a_span']))
+					b_aligned = is_aligned(span, tuple(document['b_span']))
+
+					if a_aligned:
+						a_pred = True
+					if b_aligned:
+						b_pred = True
+
+			if dataset == 'wsc':
+				span_not_found = False
+				for span in [document['a_span'], document['b_span'], document['pronoun_span']]:
+					if tuple(span) not in mention_to_predicted:
+						span_not_found = True
+						break
+
+				if span_not_found:
+					counter['span_not_found'] += 1
+
+				corr = ((a_pred == document['a_label']) and (b_pred == document['b_label']))
+				log_example["correct"] = corr
+				counter['corr'] += ((a_pred == document['a_label']) and (b_pred == document['b_label']))
+				counter['total'] += 1
+			elif dataset == 'gap':
+				for gt, pred in zip([document['a_label'], document['b_label']], [a_pred, b_pred]):
+					if gt and pred:
+						counter['true_positive'] += 1
+					elif gt and (not pred):
+						counter['false_negative'] += 1
+					elif (not gt) and (not pred):
+						counter['true_negative'] += 1
+					else:
+						counter['false_positive'] += 1
+
+			log_example["a_pred"] = a_pred
+			log_example["b_pred"] = b_pred
+
+			log_example["predicted_clusters"] = predicted_clusters
+
+			f.write(json.dumps(log_example) + "\n")
+
+	logger.info(log_file)
+
+	result_dict = {'fscore': 0.0}
+	if dataset == 'wsc':
+		result_dict = {'fscore': (counter['corr'] * 100) / counter['total']}
+		logger.info('Accuracy: %.1f' % result_dict['fscore'])
+		# print(counter)
+		logger.info('Span not found: %.1f%%' % ((counter['span_not_found'] * 100) / counter['total']))
+	elif dataset == 'gap':
+		prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])
+		recall = counter['true_positive'] / (counter['true_positive'] + counter['false_negative'])
+
+		result_dict['prec'], result_dict['recall'] = prec * 100, recall * 1000
+		if prec and recall:
+			result_dict = {'fscore': (2 * prec * recall * 100) / (prec + recall)}
+
+		logger.info('F-score: %.1f' % result_dict['fscore'])
+
+	return result_dict
+
+
+def coref_evaluation(
+				config, model: EntityRankingModel, data_iter_map, dataset, split='dev',
+				final_eval=False, conll_data_dir=None):
+	dataset_config = config.datasets[dataset]
+	if dataset_config.get('targeted_eval', False):
+		return targeted_coref_evaluation(config, model, data_iter_map, dataset, split=split)
+	else:
+		return full_coref_evaluation(
+			config, model, data_iter_map, dataset, split=split, final_eval=final_eval,
+			conll_data_dir=conll_data_dir)

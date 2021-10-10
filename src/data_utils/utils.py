@@ -4,11 +4,7 @@ from os import path
 
 def get_data_file(data_dir, split, max_segment_len):
     jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
-
-    print(jsonl_file)
-    print(path.exists(data_dir))
     if path.exists(jsonl_file):
-        print("Hello")
         return jsonl_file
     else:
         jsonl_file = path.join(data_dir, "{}.jsonlines".format(split))

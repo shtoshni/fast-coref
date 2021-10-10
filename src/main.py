@@ -238,9 +238,6 @@ def main():
         if args.dataset in conll_data_dir:
             args.conll_data_dir[args.dataset] = conll_data_dir[args.dataset]
 
-    print(args.data_dir_dict)
-    print(args.conll_data_dir)
-
     # Log directory for Tensorflow Summary
     log_dir = path.join(args.model_dir, "logs")
     if not path.exists(log_dir):
@@ -257,22 +254,20 @@ def main():
 
 @hydra.main(config_path="conf", config_name="config")
 def hydra_main(cfg):
-    # hydra.output_subdir = None
-    # print(OmegaConf.to_yaml(cfg))
     masked_copy = OmegaConf.masked_copy(cfg, ['dataset', 'model', 'trainer', 'optimizer'])
     encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
     hashlib.md5().update(encoded)
 
     model_name = str(hashlib.md5().hexdigest())
     cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, cfg.paths.model_name_prefix + model_name)
-    cfg.paths.best_model_dir = path.join(cfg.paths.model_dir , 'best')
+    cfg.paths.best_model_dir = path.join(cfg.paths.model_dir, 'best')
 
-    # print(cfg.paths.model_dir)
-    # print(cfg.datasets)
-    # print(cfg)
-
+    # print(cfg.datasets['litbank'])
+    # print(dict(cfg))
     Experiment(cfg)
 
 
 if __name__ == "__main__":
+    import sys
+    sys.argv.append(f'hydra.run.dir={os.path.expanduser("~")}')
     hydra_main()
