@@ -31,6 +31,7 @@ def hydra_main(cfg):
 
 	# print(cfg.datasets['litbank'])
 	# print(dict(cfg))
+	print(cfg.paths.conll_scorer)
 	Experiment(cfg)
 
 

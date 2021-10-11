@@ -351,7 +351,8 @@ class Experiment:
 		# Dev performance
 		fscore_dict = {}
 		for dataset in self.data_iter_map['dev']:
-			result_dict = coref_evaluation(self.config, self.model, self.data_iter_map, dataset)
+			result_dict = coref_evaluation(
+				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
 
 		logger.info(fscore_dict)
