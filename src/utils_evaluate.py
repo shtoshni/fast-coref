@@ -107,7 +107,11 @@ def full_coref_evaluation(
 			# (2) CoNLL score only makes sense when the evaluation is using the canonical cluster threshold
 			# (3) Check if the scorer and CoNLL annotation directory exist
 			is_canonical = (dataset_config.cluster_threshold == dataset_config.canonical_cluster_threshold)
-			path_exists_bool = path.exists(config.paths.conll_scorer) and path.exists(conll_data_dir[dataset])
+			try:
+				path_exists_bool = path.exists(config.paths.conll_scorer) and path.exists(conll_data_dir[dataset])
+			except TypeError:
+				# This exception occurs when NoneType is passed along
+				path_exists_bool = False
 
 			if final_eval and is_canonical and path_exists_bool:
 				gold_path = path.join(conll_data_dir[dataset], f'{split}.conll')
