@@ -1,5 +1,5 @@
 defaults:
-  - datasets: joint
+  - datasets: litbank
   - model: model
   - optimizer: adam
   - trainer: train

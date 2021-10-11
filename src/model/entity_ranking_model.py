@@ -8,23 +8,29 @@ from model.memory.entity_memory import EntityMemory
 
 
 class EntityRankingModel(nn.Module):
-	def __init__(self, model_config, dropout_rate=0.0):
+	def __init__(self, config, train_config):
 		super(EntityRankingModel, self).__init__()
-		self.config = model_config
+		self.config = config
+		self.train_config = train_config
 
 		# Dropout module - Used during training
-		self.drop_module = nn.Dropout(p=dropout_rate)
+		self.drop_module = nn.Dropout(p=train_config.dropout_rate)
 
 		# Document encoder + Mention proposer
-		self.mention_proposer = MentionProposalModule(model_config, drop_module=self.drop_module)
+		self.mention_proposer = MentionProposalModule(config, train_config, drop_module=self.drop_module)
 
 		# Clustering module
 		span_emb_size = self.mention_proposer.span_emb_size
 		# Use of genre feature in clustering or not
 		if self.config.metadata_params.use_genre_feature:
-			model_config.memory.num_feats = 3
-		self.memory = EntityMemory(
-			config=model_config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
+			config.memory.num_feats = 3
+
+		self.memory_net = EntityMemory(
+			config=config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
+
+	@property
+	def device(self) -> torch.device:
+		return self.mention_proposer.device
 
 	def get_params(self, named=False):
 		encoder_params, mem_params = [], []
@@ -41,7 +47,7 @@ class EntityRankingModel(nn.Module):
 		return self.mention_proposer.doc_encoder.get_tokenizer()
 
 	def get_metadata(self, document):
-		meta_params = self.config.metada_params
+		meta_params = self.config.metadata_params
 		if meta_params.use_genre_feature:
 			doc_class = document["doc_key"][:2]
 			if doc_class in meta_params.genres:
@@ -82,7 +88,11 @@ class EntityRankingModel(nn.Module):
 		"Calculates the coreference loss given the action probability list and ground truth actions."
 		num_ents, counter = 0, 0
 		coref_loss = 0.0
-		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
+
+		if self.training:
+			max_ents = self.config.memory.mem_type.max_ents
+		else:
+			max_ents = self.config.memory.mem_type.eval_max_ents
 
 		for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
 			if action_str == 'c':
@@ -102,7 +112,7 @@ class EntityRankingModel(nn.Module):
 
 			target = torch.tensor([gt_idx], device=self.device)
 			weight = torch.ones_like(action_prob_list[counter], device=self.device)
-			label_smoothing_fn = LabelSmoothingLoss(smoothing=self.label_smoothing_wt, dim=0)
+			label_smoothing_fn = LabelSmoothingLoss(smoothing=self.train_config.label_smoothing_wt, dim=0)
 
 			coref_loss += label_smoothing_fn(pred=action_prob_list[counter], target=target, weight=weight)
 			counter += 1
@@ -130,6 +140,8 @@ class EntityRankingModel(nn.Module):
 
 		if 'ment_loss' in proposer_output_dict:
 			loss_dict = {'total': proposer_output_dict['ment_loss'], 'entity': proposer_output_dict['ment_loss']}
+		else:
+			loss_dict = {'total': 0.0}
 
 		if len(coref_new_list) > 0:
 			coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)

@@ -1,5 +1,3 @@
-import collections
-
 import sys
 from os import path
 import os
@@ -63,8 +61,8 @@ class Experiment:
 
 	def _build_model(self):
 		model_params = self.config.model
-		dropout_rate = self.config.trainer.dropout_rate
-		self.model = EntityRankingModel(model_params, dropout_rate=dropout_rate)
+		train_config = self.config.trainer
+		self.model = EntityRankingModel(config=model_params,  train_config=train_config)
 
 	def _load_data(self):
 		self.orig_data_map, self.num_train_docs_map, self.data_iter_map = {}, {}, {}
@@ -179,8 +177,6 @@ class Experiment:
 	def _is_training_remaining(self):
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
-		if self.train_info['evals'] >= self.config.trainer.max_evals:
-			return False
 		if self.train_info['global_steps'] >= self.config.trainer.num_training_steps:
 			return False
 
@@ -199,8 +195,11 @@ class Experiment:
 		train_config = self.config.trainer
 		self.optimizer, self.optim_scheduler = {}, {}
 
-		# Gradient scaler required for mixed precision training
-		self.scaler = torch.cuda.amp.GradScaler()
+		if torch.cuda.is_available():
+			# Gradient scaler required for mixed precision training
+			self.scaler = torch.cuda.amp.GradScaler()
+		else:
+			self.scaler = None
 
 		# Optimizer for clustering params
 		self.optimizer['mem'] = torch.optim.Adam(
@@ -266,24 +265,40 @@ class Experiment:
 					for key in optimizer:
 						optimizer[key].zero_grad()
 
-					with torch.cuda.amp.autocast():
+					if scaler is not None:
+						with torch.cuda.amp.autocast():
+							loss = model.forward_training(example)
+							total_loss = loss['total']
+							if total_loss is None:
+								return None
+
+							scaler.scale(total_loss).backward()
+							for key in optimizer:
+								scaler.unscale_(optimizer[key])
+					else:
 						loss = model.forward_training(example)
 						total_loss = loss['total']
 						if total_loss is None:
 							return None
 
-					scaler.scale(total_loss).backward()
-					for key in optimizer:
-						scaler.unscale_(optimizer[key])
-
+					# Gradient clipping
 					torch.nn.utils.clip_grad_norm_(encoder_params, optimizer_config.max_gradient_norm)
 					torch.nn.utils.clip_grad_norm_(task_params, optimizer_config.max_gradient_norm)
 
 					for key in optimizer:
-						scaler.step(optimizer[key])
+						# Optimizer step
+						if scaler is not None:
+							scaler.step(optimizer[key])
+						else:
+							optimizer[key].step()
+
+						# Scheduler step
 						scheduler[key].step()
 
-					scaler.update()
+					# Update scaler
+					if scaler is not None:
+						scaler.update()
+
 					return total_loss.item()
 
 				example_loss = handle_example(cur_example)
@@ -296,29 +311,31 @@ class Experiment:
 					torch.cuda.reset_peak_memory_stats()
 
 				if train_config.eval_per_k_steps and \
-								(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
+							(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
 					fscore = self.periodic_model_eval()
 					# Get elapsed time
 					elapsed_time = time.time() - start_time
 
 					start_time = time.time()
-					logger.info("Steps: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
-											% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
+					logger.info(
+						"Steps: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
+						% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
+
 					# Check stopping criteria
 					if self.train_info['num_stuck_evals'] >= train_config.patience:
 						return
 					if self.train_info['global_steps'] >= train_config.num_training_steps:
 						return
 
-					if self.config.infra.slurm_id:
-						# Check if enough time to run another eval
+					if not self.config.infra.is_local:
+						# Check if enough time on cluster to run another eval
 						eval_time['total_time'] += elapsed_time
 						eval_time['num_evals'] += 1
 
 						avg_eval_time = eval_time['total_time'] / eval_time['num_evals']
-						rem_time = self.config.infra.slurm_time - eval_time['total_time']
+						rem_time = self.config.infra.job_time - eval_time['total_time']
 						logging.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
-												 % (avg_eval_time / 60, rem_time / 60))
+						             % (avg_eval_time / 60, rem_time / 60))
 
 						if rem_time < avg_eval_time:
 							logging.info('Canceling job as not much time left')
@@ -415,7 +432,7 @@ class Experiment:
 				self.optim_scheduler[param_group].load_state_dict(
 					checkpoint['scheduler'][param_group])
 
-			if 'scaler' in checkpoint:
+			if 'scaler' in checkpoint and self.scaler is not None:
 				self.scaler.load_state_dict(checkpoint['scaler'])
 
 		if last_checkpoint:
@@ -434,12 +451,15 @@ class Experiment:
 		save_dict = {
 			'train_info': self.train_info,
 			'model': model_state_dict,
-			'scaler': self.scaler.state_dict(),
 			'rng_state': torch.get_rng_state(),
 			'np_rng_state': np.random.get_state(),
 			'optimizer': {}, 'scheduler': {},
 			'config': self.config,
 		}
+
+		if self.scaler is not None:
+			save_dict['scaler'] = self.scaler.state_dict()
+
 		if model_type != 'best':
 			param_groups = ['mem', 'doc'] if self.config.model.doc_encoder.finetune else ['mem']
 			for param_group in param_groups:

@@ -6,6 +6,7 @@ import torch
 class BaseDocEncoder(nn.Module):
     def __init__(self, config):
         super(BaseDocEncoder, self).__init__()
+        self.config = config
 
         gradient_checkpointing = False
         if config.finetune:
@@ -35,6 +36,10 @@ class BaseDocEncoder(nn.Module):
                 param.requires_grad = False
 
         self.hidden_size = self.lm_encoder.config.hidden_size
+
+    @property
+    def device(self) -> torch.device:
+        return next(self.lm_encoder.parameters()).device
 
     def get_tokenizer(self):
         return self.tokenizer

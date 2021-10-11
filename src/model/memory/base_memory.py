@@ -33,6 +33,10 @@ class BaseMemory(nn.Module):
 		self.distance_embeddings = nn.Embedding(10, config.emb_size)
 		self.counter_embeddings = nn.Embedding(10, config.emb_size)
 
+	@property
+	def device(self) -> torch.device:
+		return next(self.mem_coref_mlp.parameters()).device
+
 	def initialize_memory(self, mem=None, ent_counter=None, last_mention_start=None):
 		if mem is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)

@@ -4,8 +4,8 @@ from model.document_encoder.base_encoder import BaseDocEncoder
 
 
 class IndependentDocEncoder(BaseDocEncoder):
-    def __init__(self, encoder_config):
-        super(IndependentDocEncoder, self).__init__(encoder_config)
+    def __init__(self, config):
+        super(IndependentDocEncoder, self).__init__(config)
 
     def forward(self, instance):
         doc_tens = instance["tensorized_sent"]
@@ -21,7 +21,7 @@ class IndependentDocEncoder(BaseDocEncoder):
         else:
             attn_mask = get_sequence_mask(torch.tensor(sent_len_list, device=self.device))
 
-        if not self.finetune:
+        if not self.config.finetune:
             with torch.no_grad():
                 outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
         else:
