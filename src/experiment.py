@@ -63,6 +63,8 @@ class Experiment:
 		model_params = self.config.model
 		train_config = self.config.trainer
 		self.model = EntityRankingModel(config=model_params,  train_config=train_config)
+		if torch.cuda.is_available():
+			self.model.cuda()
 
 	def _load_data(self):
 		self.orig_data_map, self.num_train_docs_map, self.data_iter_map = {}, {}, {}
