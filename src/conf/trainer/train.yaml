@@ -6,5 +6,5 @@ max_evals: 20
 to_save_model: True
 log_frequency: 500
 patience: 5
-eval_per_k_steps: 5000
+eval_per_k_steps: null
 num_training_steps: null
