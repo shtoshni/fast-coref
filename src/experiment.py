@@ -40,7 +40,7 @@ class Experiment:
 
 		# Step 3 - Load model and resume training if required
 		if self.eval_model:
-			# Load best checkpoint
+			# Load the best checkpoint
 			self._load_previous_checkpoint(last_checkpoint=False)
 		else:
 			# Resume training
@@ -48,11 +48,12 @@ class Experiment:
 			# Loading the checkpoint also restores the training metadata
 			self._load_previous_checkpoint(last_checkpoint=True)
 
-		# # Step 5 - Train the model
-		# if self.is_training_remaining():
-		#     self.train()
-		#
-		# Step 6 - Perform final evaluation
+		# All set to resume training
+		# But first check if training is remaining
+		if self._is_training_remaining():
+				self.train()
+
+		# Step 4 - Perform final evaluation
 		self.load_model(self.best_model_path, last_checkpoint=False)
 		self.perform_final_eval()
 
@@ -171,57 +172,73 @@ class Experiment:
 			utils.print_model_info(self.model)
 			sys.stdout.flush()
 
-	def _setup_training(self):
-		self.initialize_optimizers()
-
-		# Check if further training is required
+	def _is_training_remaining(self):
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
-		if self.eval_per_k_steps and self.train_info['global_steps'] >= self.num_training_steps:
+		if self.train_info['evals'] >= self.config.trainer.max_evals:
 			return False
-		if (not self.eval_per_k_steps) and (self.train_info['evals'] >= self.max_evals):
+		if self.train_info['global_steps'] >= self.config.trainer.num_training_steps:
 			return False
 
 		return True
 
-	def initialize_optimizers(self):
-		"""Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
-		self.scaler = torch.cuda.amp.GradScaler()
-		self.optimizer['mem'] = torch.optim.Adam(self.model.get_params()[1], lr=self.init_lr, eps=1e-6)
+	def _setup_training(self):
+		# Dictionary to track key training variables
+		self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0, 'peak_memory': 0.0}
 
-		if self.lr_decay == 'inv':
+		# Initialize optimizers
+		self._initialize_optimizers()
+
+	def _initialize_optimizers(self):
+		"""Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
+		optimizer_config = self.config.optimizer
+		train_config = self.config.trainer
+		self.optimizer, self.optim_scheduler = {}, {}
+
+		# Gradient scaler required for mixed precision training
+		self.scaler = torch.cuda.amp.GradScaler()
+
+		# Optimizer for clustering params
+		self.optimizer['mem'] = torch.optim.Adam(
+			self.model.get_params()[1], lr=optimizer_config.init_lr, eps=1e-6)
+
+		if optimizer_config.lr_decay == 'inv':
 			self.optim_scheduler['mem'] = get_inverse_square_root_decay(self.optimizer['mem'], num_warmup_steps=0)
 		else:
-			# No warmup for model params
+			# No warmup steps for model params
 			self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
-				self.optimizer['mem'], num_warmup_steps=0, num_training_steps=self.num_training_steps)
+				self.optimizer['mem'], num_warmup_steps=0, num_training_steps=train_config.num_training_steps)
 
-		if self.fine_tune_lr is not None:
-			no_decay = ['bias', 'LayerNorm.weight']
+		if optimizer_config.fine_tune_lr is not None:
+			# Optimizer for document encoder
+			no_decay = ['bias', 'LayerNorm.weight']  # No weight decay for bias and layernorm weights
 			encoder_params = self.model.get_params(named=True)[0]
 			grouped_param = [
 				{'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
-				 'lr': self.fine_tune_lr,
-				 'weight_decay': 1e-2},
+				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 1e-2},
 				{'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
-				 'lr': self.fine_tune_lr,
+				 'lr': optimizer_config.fine_tune_lr,
 				 'weight_decay': 0.0}
 			]
 
-			self.optimizer['doc'] = AdamW(grouped_param, lr=self.fine_tune_lr, eps=1e-6)
-			num_warmup_steps = int(0.1 * self.num_training_steps)
-			if self.lr_decay == 'inv':
+			self.optimizer['doc'] = AdamW(grouped_param, lr=optimizer_config.fine_tune_lr, eps=1e-6)
+
+			# Scheduler for document encoder
+			num_warmup_steps = int(0.1 * train_config.num_training_steps)
+			if optimizer_config.lr_decay == 'inv':
 				self.optim_scheduler['doc'] = get_inverse_square_root_decay(
 					self.optimizer['doc'], num_warmup_steps=num_warmup_steps)
 			else:
 				self.optim_scheduler['doc'] = get_linear_schedule_with_warmup(
 					self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
-					num_training_steps=self.num_training_steps)
+					num_training_steps=train_config.num_training_steps)
 
 	def train(self):
 		"""Train model"""
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 		model.train()
+
+		optimizer_config, train_config = self.config.optimizer, self.config.trainer
 
 		start_time = time.time()
 		eval_time = {'total_time': 0, 'num_evals': 0}
@@ -255,8 +272,8 @@ class Experiment:
 					for key in optimizer:
 						scaler.unscale_(optimizer[key])
 
-					torch.nn.utils.clip_grad_norm_(encoder_params, self.max_gradient_norm)
-					torch.nn.utils.clip_grad_norm_(task_params, self.max_gradient_norm)
+					torch.nn.utils.clip_grad_norm_(encoder_params, optimizer_config.max_gradient_norm)
+					torch.nn.utils.clip_grad_norm_(task_params, optimizer_config.max_gradient_norm)
 
 					for key in optimizer:
 						scaler.step(optimizer[key])
@@ -267,14 +284,15 @@ class Experiment:
 
 				example_loss = handle_example(cur_example)
 
-				if self.train_info['global_steps'] % self.log_frequency == 0:
+				if self.train_info['global_steps'] % train_config.log_frequency == 0:
 					logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
 						cur_example["doc_key"], example_loss,
 						(torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
 					)
 					torch.cuda.reset_peak_memory_stats()
 
-				if self.eval_per_k_steps and (self.train_info['global_steps'] % self.eval_per_k_steps == 0):
+				if train_config.eval_per_k_steps and \
+								(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
 					fscore = self.periodic_model_eval()
 					# Get elapsed time
 					elapsed_time = time.time() - start_time
@@ -283,9 +301,9 @@ class Experiment:
 					logger.info("Steps: %d, F1: %.1f, Max F1: %.1f, Time: %.2f"
 											% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
 					# Check stopping criteria
-					if self.train_info['num_stuck_evals'] >= self.patience:
+					if self.train_info['num_stuck_evals'] >= train_config.patience:
 						return
-					if self.train_info['global_steps'] >= self.num_training_steps:
+					if self.train_info['global_steps'] >= train_config.num_training_steps:
 						return
 
 					if self.config.infra.slurm_id:

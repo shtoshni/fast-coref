@@ -54,17 +54,6 @@ class MentionProposalModule(nn.Module):
 			drop_module=self.drop_module
 		)
 
-	def get_params(self, named=False):
-		encoder_params, mem_params = [], []
-		for name, param in self.named_parameters():
-			elem = (name, param) if named else param
-			if name.startswith('doc_encoder'):
-				encoder_params.append(elem)
-			else:
-				mem_params.append(elem)
-
-		return encoder_params, mem_params
-
 	def get_span_embeddings(self, encoded_doc, ment_starts, ment_ends):
 		span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
 		# Add span width embeddings

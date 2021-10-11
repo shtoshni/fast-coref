@@ -26,6 +26,17 @@ class EntityRankingModel(nn.Module):
 		self.memory = EntityMemory(
 			config=model_config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
+	def get_params(self, named=False):
+		encoder_params, mem_params = [], []
+		for name, param in self.named_parameters():
+			elem = (name, param) if named else param
+			if 'doc_encoder' in name:
+				encoder_params.append(elem)
+			else:
+				mem_params.append(elem)
+
+		return encoder_params, mem_params
+
 	def get_tokenizer(self):
 		return self.mention_proposer.doc_encoder.get_tokenizer()
 
