@@ -345,7 +345,9 @@ class Experiment:
 
 			logger.handlers[0].flush()
 
+	@torch.no_grad()
 	def periodic_model_eval(self):
+		self.model.eval()
 		# Dev performance
 		fscore_dict = {}
 		for dataset in self.data_iter_map['dev']:
@@ -373,8 +375,10 @@ class Experiment:
 		self.model.train()
 		return fscore
 
+	@torch.no_grad()
 	def perform_final_eval(self):
 		"""Evaluate the model on train, dev, and test"""
+		self.model.eval()
 		base_output_dict = dict(self.config)
 		perf_summary = {
 			'model_dir': path.normpath(self.config.paths.model_dir), 'best_perf': self.train_info['val_perf']}
