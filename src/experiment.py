@@ -39,6 +39,10 @@ class Experiment:
 		self._load_data()
 
 		# Step 3 - Load model and resume training if required
+
+		# Initialize dictionary to track key training variables
+		self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0, 'peak_memory': 0.0}
+
 		if self.eval_model:
 			# Load the best checkpoint
 			self._load_previous_checkpoint(last_checkpoint=False)
@@ -48,9 +52,9 @@ class Experiment:
 			# Loading the checkpoint also restores the training metadata
 			self._load_previous_checkpoint(last_checkpoint=True)
 
-		# All set to resume training
-		# But first check if training is remaining
-		if self._is_training_remaining():
+			# All set to resume training
+			# But first check if training is remaining
+			if self._is_training_remaining():
 				self.train()
 
 		# Step 4 - Perform final evaluation
@@ -414,9 +418,10 @@ class Experiment:
 			if 'scaler' in checkpoint:
 				self.scaler.load_state_dict(checkpoint['scaler'])
 
-		self.train_info = checkpoint['train_info']
-		torch.set_rng_state(checkpoint['rng_state'])
-		np.random.set_state(checkpoint['np_rng_state'])
+		if last_checkpoint:
+			self.train_info = checkpoint['train_info']
+			torch.set_rng_state(checkpoint['rng_state'])
+			np.random.set_state(checkpoint['np_rng_state'])
 
 	def save_model(self, location, model_type='last'):
 		"""Save model"""
