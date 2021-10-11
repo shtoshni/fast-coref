@@ -162,9 +162,9 @@ class Experiment:
 				self.load_model(self.model_path, last_checkpoint=last_checkpoint)
 			else:
 				# Starting training
-				torch.random.manual_seed(self.config.trainer.seed)
-				np.random.seed(self.config.trainer.seed)
-				random.seed(self.config.trainer.seed)
+				torch.random.manual_seed(self.config.seed)
+				np.random.seed(self.config.seed)
+				random.seed(self.config.seed)
 		else:
 			# Load best model
 			if path.exists(self.best_model_path):
