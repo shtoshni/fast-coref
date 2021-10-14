@@ -1,11 +1,8 @@
-import collections
 import os
 import logging
-import torch
 import time
 import json
 from os import path
-from typing import Dict
 from collections import OrderedDict, Counter
 
 from coref_utils.metrics import CorefEvaluator
@@ -15,21 +12,23 @@ from coref_utils.utils import get_mention_to_cluster, is_aligned
 from model.utils import action_sequences_to_clusters
 from model.entity_ranking_model import EntityRankingModel
 
+from omegaconf import DictConfig
+from typing import Dict
+from torch import Tensor
+
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
 
 
 def full_coref_evaluation(
-				config, model: EntityRankingModel, data_iter_map: Dict, dataset, split='dev',
-				final_eval=False, conll_data_dir=None):
+				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict, dataset: str,
+				split='dev', final_eval=False, conll_data_dir: Dict = None) -> Dict:
 	"""Full coreference evaluation."""
-	model.eval()
-
 	# Measure time
 	inference_time = 0.0
 
-	dataset_config = config.datasets[dataset]
-	cluster_threshold = dataset_config['cluster_threshold']
+	dataset_config: DictConfig = config.datasets[dataset]
+	cluster_threshold: int = dataset_config['cluster_threshold']
 
 	log_dir = path.join(config.paths.model_dir, dataset)
 	if not path.exists(log_dir):
@@ -82,7 +81,7 @@ def full_coref_evaluation(
 
 			del log_example["tensorized_sent"]
 			for key in list(log_example.keys()):
-				if isinstance(log_example[key], torch.Tensor):
+				if isinstance(log_example[key], Tensor):
 					del log_example[key]
 
 			f.write(json.dumps(log_example) + "\n")
@@ -146,9 +145,8 @@ def full_coref_evaluation(
 
 
 def targeted_coref_evaluation(
-				config, model: EntityRankingModel, data_iter_map, dataset, split="test"):
-	model.eval()
-
+				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict,
+				dataset: str, split="test") -> Dict:
 	# Set up logging paths
 	log_dir = path.join(config.paths.model_dir, dataset)
 	if not path.exists(log_dir):
@@ -166,7 +164,7 @@ def targeted_coref_evaluation(
 			log_example = dict(document)
 			del log_example["tensorized_sent"]
 			for key in list(log_example.keys()):
-				if isinstance(log_example[key], torch.Tensor):
+				if isinstance(log_example[key], Tensor):
 					del log_example[key]
 
 			predicted_clusters, mention_to_predicted = \
@@ -239,8 +237,8 @@ def targeted_coref_evaluation(
 
 
 def coref_evaluation(
-				config, model: EntityRankingModel, data_iter_map, dataset, split='dev',
-				final_eval=False, conll_data_dir=None):
+				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict, dataset: str, split='dev',
+				final_eval=False, conll_data_dir: Dict = None) -> Dict:
 	dataset_config = config.datasets[dataset]
 	if dataset_config.get('targeted_eval', False):
 		return targeted_coref_evaluation(config, model, data_iter_map, dataset, split=split)

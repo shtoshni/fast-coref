@@ -20,16 +20,20 @@ from pytorch_utils.optimization_utils import get_inverse_square_root_decay
 
 from utils_evaluate import coref_evaluation
 
+from typing import Dict, Tuple, List, Optional
+from omegaconf import DictConfig
+
+
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
 
 
 class Experiment:
-	def __init__(self, config):
+	def __init__(self, config: DictConfig):
 		self.config = config
 
 		# Whether to train or not
-		self.eval_model = (not self.config.train)
+		self.eval_model: bool = (not self.config.train)
 
 		# Step 1 - Build model
 		self._build_model()
@@ -60,10 +64,10 @@ class Experiment:
 		self.load_model(self.best_model_path, last_checkpoint=False)
 		self.perform_final_eval()
 
-	def _build_model(self):
-		model_params = self.config.model
-		train_config = self.config.trainer
-		self.model = EntityRankingModel(config=model_params,  train_config=train_config)
+	def _build_model(self) -> None:
+		model_params: DictConfig = self.config.model
+		train_config: DictConfig = self.config.trainer
+		self.model = EntityRankingModel(model_config=model_params,  train_config=train_config)
 		if torch.cuda.is_available():
 			self.model.cuda()
 
@@ -71,18 +75,17 @@ class Experiment:
 		self.orig_data_map, self.num_train_docs_map, self.data_iter_map = {}, {}, {}
 		self.conll_data_dir = {}
 
-		eval_model = (not self.config.train)
-		max_segment_len = self.config.model.doc_encoder.transformer.max_segment_len
+		max_segment_len: int = self.config.model.doc_encoder.transformer.max_segment_len
 		model_name: str = self.config.model.doc_encoder.transformer.name
-		add_speaker_tokens = self.config.model.doc_encoder.add_speaker_tokens
-		base_data_dir = path.abspath(self.config.paths.base_data_dir)
+		add_speaker_tokens: bool = self.config.model.doc_encoder.add_speaker_tokens
+		base_data_dir: str = path.abspath(self.config.paths.base_data_dir)
 
 		# Load data
 		for dataset_name, attributes in self.config.datasets.items():
-			num_train_docs = attributes.get('num_train_docs', None)
-			num_eval_docs = attributes.get('num_eval_docs', None)
-			num_test_docs = attributes.get('num_test_docs', None)
-			singleton_file = attributes.get('singleton_file', None)
+			num_train_docs: Optional[int] = attributes.get('num_train_docs', None)
+			num_eval_docs: Optional[int] = attributes.get('num_eval_docs', None)
+			num_test_docs: Optional[int] = attributes.get('num_test_docs', None)
+			singleton_file: Optional[str] = attributes.get('singleton_file', None)
 
 			# Data directory is a function of dataset name and tokenizer used
 			data_dir = path.join(path.join(base_data_dir, dataset_name), model_name)
@@ -107,7 +110,7 @@ class Experiment:
 				if path.exists(conll_dir):
 					self.conll_data_dir[dataset_name] = conll_dir
 
-			if eval_model:
+			if self.eval_model:
 				self.orig_data_map[dataset_name] = load_eval_dataset(
 					data_dir, max_segment_len=max_segment_len,
 					num_test_docs=num_test_docs
@@ -124,7 +127,7 @@ class Experiment:
 		data_processor = TensorizeDataset(
 			self.model.get_tokenizer(), remove_singletons=(not self.config.keep_singletons))
 
-		if eval_model:
+		if self.eval_model:
 			self.data_iter_map['test'] = {}
 			for dataset in self.orig_data_map:
 				self.data_iter_map['test'][dataset] = \
@@ -194,8 +197,8 @@ class Experiment:
 
 	def _initialize_optimizers(self):
 		"""Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
-		optimizer_config = self.config.optimizer
-		train_config = self.config.trainer
+		optimizer_config: DictConfig = self.config.optimizer
+		train_config: DictConfig = self.config.trainer
 		self.optimizer, self.optim_scheduler = {}, {}
 
 		if torch.cuda.is_available():
@@ -347,7 +350,7 @@ class Experiment:
 			logger.handlers[0].flush()
 
 	@torch.no_grad()
-	def periodic_model_eval(self):
+	def periodic_model_eval(self) -> float:
 		self.model.eval()
 		# Dev performance
 		fscore_dict = {}
@@ -365,7 +368,7 @@ class Experiment:
 			self.train_info['num_stuck_evals'] = 0
 			self.train_info['val_perf'] = fscore
 			logger.info('Saving best model')
-			self.save_model(self.best_model_path, model_type='best')
+			self.save_model(self.best_model_path, last_checkpoint=False)
 		else:
 			self.train_info['num_stuck_evals'] += 1
 
@@ -430,10 +433,12 @@ class Experiment:
 		json.dump(perf_summary, open(summary_file, 'w'), indent=2)
 		logger.info("Performance summary file: %s" % summary_file)
 
-	def load_model(self, location, last_checkpoint=True):
+	def load_model(self, location: str, last_checkpoint=True) -> None:
 		checkpoint = torch.load(location, map_location='cpu')
 		self.model.load_state_dict(checkpoint['model'], strict=False)
+
 		if last_checkpoint:
+			# If resuming training, restore the optimizer state as well
 			for param_group in checkpoint['optimizer']:
 				self.optimizer[param_group].load_state_dict(
 					checkpoint['optimizer'][param_group])
@@ -448,7 +453,7 @@ class Experiment:
 			torch.set_rng_state(checkpoint['rng_state'])
 			np.random.set_state(checkpoint['np_rng_state'])
 
-	def save_model(self, location, model_type='last'):
+	def save_model(self, location: str, last_checkpoint=True) -> None:
 		"""Save model"""
 		model_state_dict = OrderedDict(self.model.state_dict())
 		if not self.config.model.doc_encoder.finetune:
@@ -461,15 +466,18 @@ class Experiment:
 			'model': model_state_dict,
 			'rng_state': torch.get_rng_state(),
 			'np_rng_state': np.random.get_state(),
-			'optimizer': {}, 'scheduler': {},
 			'config': self.config,
 		}
 
 		if self.scaler is not None:
 			save_dict['scaler'] = self.scaler.state_dict()
 
-		if model_type != 'best':
-			param_groups = ['mem', 'doc'] if self.config.model.doc_encoder.finetune else ['mem']
+		if last_checkpoint:
+			# For last checkpoint save the optimizer and scheduler states as well
+			save_dict['optimizer'] = {}
+			save_dict['scheduler'] = {}
+
+			param_groups: List[str] = ['mem', 'doc'] if self.config.model.doc_encoder.finetune else ['mem']
 			for param_group in param_groups:
 				save_dict['optimizer'][param_group] = self.optimizer[param_group].state_dict()
 				save_dict['scheduler'][param_group] = self.optim_scheduler[param_group].state_dict()

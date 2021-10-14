@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Tuple
 
 from model.document_encoder import IndependentDocEncoder
 from pytorch_utils.modules import MLP
 
 from model.mention_proposal.utils import sort_mentions
+
+from typing import List, Dict, Tuple
+from torch import Tensor
 
 
 class MentionProposalModule(nn.Module):
@@ -54,8 +56,7 @@ class MentionProposalModule(nn.Module):
 		)
 
 	def get_span_embeddings(
-					self, encoded_doc: torch.Tensor, ment_starts: torch.Tensor,
-					ment_ends: torch.Tensor) -> torch.Tensor:
+					self, encoded_doc: Tensor, ment_starts: Tensor, ment_ends: Tensor) -> Tensor:
 		span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
 		# Add span width embeddings
 		span_width_indices = torch.clamp(
@@ -80,7 +81,7 @@ class MentionProposalModule(nn.Module):
 		return torch.cat(span_emb_list, dim=1)
 
 	def get_mention_width_scores(
-					self, cand_starts: torch.Tensor, cand_ends: torch.Tensor) -> torch.Tensor:
+					self, cand_starts: Tensor, cand_ends: Tensor) -> Tensor:
 		span_width_idx = torch.clamp(
 			cand_ends - cand_starts, max=self.config.mention_params.max_span_width - 1)
 		span_width_embs = self.span_width_prior_embeddings(span_width_idx)
@@ -89,7 +90,7 @@ class MentionProposalModule(nn.Module):
 		return width_scores
 
 	def get_flat_gold_mentions(
-					self, clusters: List, num_tokens: int, flat_cand_mask: torch.Tensor) -> torch.Tensor:
+					self, clusters: List, num_tokens: int, flat_cand_mask: Tensor) -> Tensor:
 		gold_ments = torch.zeros(
 			num_tokens, self.config.mention_params.max_span_width, device=self.device)
 		for cluster in clusters:
@@ -104,24 +105,25 @@ class MentionProposalModule(nn.Module):
 		# assert(torch.sum(gold_ments) == torch.sum(filt_gold_ments))  # Filtering shouldn't remove gold mentions
 		return filt_gold_ments
 
-	def get_candidate_endpoints(self, encoded_doc: torch.Tensor, document: Dict) -> Tuple:
+	def get_candidate_endpoints(self, encoded_doc: Tensor, document: Dict) -> Tuple:
 		num_words: int = encoded_doc.shape[0]
-		sent_map: torch.Tensor = document["sentence_map"].to(self.device)
+		sent_map: Tensor = document["sentence_map"].to(self.device)
+
 		# num_words x max_span_width
-		cand_starts: torch.Tensor = torch.unsqueeze(
+		cand_starts = torch.unsqueeze(
 			torch.arange(num_words, device=self.device), dim=1).repeat(1, self.config.mention_params.max_span_width)
-		cand_ends: torch.Tensor = cand_starts + torch.unsqueeze(
+		cand_ends = cand_starts + torch.unsqueeze(
 			torch.arange(self.config.mention_params.max_span_width, device=self.device), dim=0)
 
-		cand_start_sent_indices: torch.Tensor = sent_map[cand_starts]
+		cand_start_sent_indices: Tensor = sent_map[cand_starts]
 		# Avoid getting sentence indices for cand_ends >= num_words
-		corr_cand_ends: torch.Tensor = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
-		cand_end_sent_indices: torch.Tensor = sent_map[corr_cand_ends]
+		corr_cand_ends: Tensor = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
+		cand_end_sent_indices: Tensor = sent_map[corr_cand_ends]
 
 		# End before document ends & Same sentence
-		constraint1: torch.Tensor = (cand_ends < num_words)
-		constraint2: torch.Tensor = (cand_start_sent_indices == cand_end_sent_indices)
-		cand_mask: torch.Tensor = constraint1 & constraint2
+		constraint1: Tensor = (cand_ends < num_words)
+		constraint2: Tensor = (cand_start_sent_indices == cand_end_sent_indices)
+		cand_mask: Tensor = constraint1 & constraint2
 		flat_cand_mask = cand_mask.reshape(-1)
 
 		# Filter and flatten the candidate end points
@@ -129,7 +131,7 @@ class MentionProposalModule(nn.Module):
 		filt_cand_ends = cand_ends.reshape(-1)[flat_cand_mask]  # (num_candidates,)
 		return filt_cand_starts, filt_cand_ends, flat_cand_mask
 
-	def get_pred_mentions(self, document: Dict, encoded_doc: torch.Tensor, ment_threshold=0.0) -> Dict:
+	def get_pred_mentions(self, document: Dict, encoded_doc: Tensor, ment_threshold=0.0) -> Dict:
 		mention_params = self.config.mention_params
 
 		num_tokens = encoded_doc.shape[0]
@@ -205,7 +207,7 @@ class MentionProposalModule(nn.Module):
 
 	def forward(self, document: Dict) -> Dict:
 		"Given the docume mention embeddings for the proposed mentions."
-		encoded_doc = self.doc_encoder(document)
+		encoded_doc: Tensor = self.doc_encoder(document)
 
 		if self.config.mention_params.use_gold_ments:
 			# Process gold mentions to a format similar to mentions obtained after prediction
@@ -213,12 +215,13 @@ class MentionProposalModule(nn.Module):
 		else:
 			output_dict = self.get_pred_mentions(document, encoded_doc)
 
-		pred_starts, pred_ends = output_dict['ment_starts'], output_dict['ment_ends']
+		pred_starts: Tensor = output_dict['ment_starts']
+		pred_ends: Tensor = output_dict['ment_ends']
 
 		# Stack the starts and ends to get the mention tuple
 		output_dict['ments'] = torch.stack((pred_starts, pred_ends), dim=1)
 		# Get mention embeddings
-		mention_embs = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
+		mention_embs: Tensor = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 		output_dict['ment_emb_list'] = torch.unbind(mention_embs, dim=0)
 
 		return output_dict

@@ -3,8 +3,8 @@ import torch.nn as nn
 from pytorch_utils.modules import MLP
 import math
 from omegaconf import DictConfig
-from typing import Dict, List, Tuple
-from torch import Tensor as T
+from typing import Dict, Tuple
+from torch import Tensor
 
 LOG2 = math.log(2)
 
@@ -39,8 +39,8 @@ class BaseMemory(nn.Module):
 	def device(self) -> torch.device:
 		return next(self.mem_coref_mlp.parameters()).device
 
-	def initialize_memory(self, mem: T = None, ent_counter: T = None,
-	                      last_mention_start: T = None) -> Tuple[T, T, T]:
+	def initialize_memory(self, mem: Tensor = None, ent_counter: Tensor = None,
+	                      last_mention_start: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
 		# Check for unintialized memory
 		if mem is None or ent_counter is None or last_mention_start is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)
@@ -50,7 +50,7 @@ class BaseMemory(nn.Module):
 		return mem, ent_counter, last_mention_start
 
 	@staticmethod
-	def get_bucket(count: T) -> T:
+	def get_bucket(count: Tensor) -> Tensor:
 		"Bucket distance and entity counters using the same logic."
 		logspace_idx = torch.floor(torch.log(count.float()) / LOG2).long() + 3
 		use_identity = (count <= 4).long()
@@ -58,30 +58,31 @@ class BaseMemory(nn.Module):
 		return torch.clamp(combined_idx, 0, 9)
 
 	@staticmethod
-	def get_distance_bucket(distances: T) -> T:
+	def get_distance_bucket(distances: Tensor) -> Tensor:
 		return BaseMemory.get_bucket(distances)
 
 	@staticmethod
-	def get_counter_bucket(count: T) -> T:
+	def get_counter_bucket(count: Tensor) -> Tensor:
 		return BaseMemory.get_bucket(count)
 
-	def get_distance_emb(self, distance: T) -> T:
+	def get_distance_emb(self, distance: Tensor) -> Tensor:
 		distance_tens = self.get_distance_bucket(distance)
 		distance_embs = self.distance_embeddings(distance_tens)
 		return distance_embs
 
-	def get_counter_emb(self, ent_counter: T) -> T:
+	def get_counter_emb(self, ent_counter: Tensor) -> Tensor:
 		counter_buckets = self.get_counter_bucket(ent_counter.long())
 		counter_embs = self.counter_embeddings(counter_buckets)
 		return counter_embs
 
 	@staticmethod
-	def get_coref_mask(ent_counter: T) -> T:
+	def get_coref_mask(ent_counter: Tensor) -> Tensor:
 		cell_mask = (ent_counter > 0.0).float()
 		return cell_mask
 
 	def get_feature_embs(
-					self, ment_start: T, last_mention_start: T, ent_counter: T, metadata: Dict) -> T:
+					self, ment_start: Tensor, last_mention_start: Tensor,
+					ent_counter: Tensor, metadata: Dict) -> Tensor:
 		distance_embs = self.get_distance_emb(ment_start - last_mention_start)
 		counter_embs = self.get_counter_emb(ent_counter)
 
@@ -97,7 +98,8 @@ class BaseMemory(nn.Module):
 		return feature_embs
 
 	def get_coref_new_scores(
-					self, ment_emb: T, mem_vectors: T, ent_counter: T, feature_embs: T) -> T:
+					self, ment_emb: Tensor, mem_vectors: Tensor, ent_counter: Tensor,
+					feature_embs: Tensor) -> Tensor:
 		# Repeat the query vector for comparison against all cells
 		num_ents = mem_vectors.shape[0]
 		rep_ment_emb = ment_emb.repeat(num_ents, 1)  # M x H
@@ -119,7 +121,7 @@ class BaseMemory(nn.Module):
 		return coref_new_score
 
 	@staticmethod
-	def assign_cluster(coref_new_scores):
+	def assign_cluster(coref_new_scores: Tensor) -> Tuple[int, str]:
 		num_ents = coref_new_scores.shape[0] - 1
 		pred_max_idx = torch.argmax(coref_new_scores).item()
 		if pred_max_idx < num_ents:
@@ -129,7 +131,8 @@ class BaseMemory(nn.Module):
 			# New cluster
 			return num_ents, 'o'
 
-	def coref_update(self, ment_emb, mem_vectors, cell_idx, ent_counter):
+	def coref_update(self, ment_emb: Tensor, mem_vectors: Tensor,
+	                 cell_idx: int, ent_counter: Tensor) -> Tensor:
 		if self.config.entity_rep == 'learned_avg':
 			alpha_wt = torch.sigmoid(
 				self.alpha(torch.cat([mem_vectors[cell_idx, :], ment_emb], dim=0)))

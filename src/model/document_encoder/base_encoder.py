@@ -1,10 +1,13 @@
 import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast
 import torch
+
+from omegaconf import DictConfig
+from typing import Dict
 
 
 class BaseDocEncoder(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config: DictConfig):
         super(BaseDocEncoder, self).__init__()
         self.config = config
 
@@ -16,13 +19,13 @@ class BaseDocEncoder(nn.Module):
                 if memory_in_gb > 40:
                     gradient_checkpointing = False
 
-        model_str = config.transformer.model_str
+        model_str: str = config.transformer.model_str
 
-        self.lm_encoder = AutoModel.from_pretrained(
+        self.lm_encoder: nn.Module = AutoModel.from_pretrained(
             model_str, output_hidden_states=False,
             gradient_checkpointing=gradient_checkpointing)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_str)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_str, use_fast=True)
         if config.add_speaker_tokens:
             self.tokenizer.add_special_tokens({
                 'additional_special_tokens': [config.speaker_start, config.speaker_end]
@@ -35,17 +38,17 @@ class BaseDocEncoder(nn.Module):
                 # Don't update encoder params
                 param.requires_grad = False
 
-        self.hidden_size = self.lm_encoder.config.hidden_size
+        self.hidden_size: int = self.lm_encoder.config.hidden_size
 
     @property
     def device(self) -> torch.device:
         return next(self.lm_encoder.parameters()).device
 
-    def get_tokenizer(self):
+    def get_tokenizer(self) -> PreTrainedTokenizerFast:
         return self.tokenizer
 
-    def to_add_speaker_tokens(self):
+    def to_add_speaker_tokens(self) -> bool:
         return self.add_speaker_tokens
 
-    def forward(self, document):
+    def forward(self, document: Dict):
         raise NotImplementedError

@@ -7,32 +7,39 @@ from model.utils import get_gt_actions
 from model.memory.entity_memory import EntityMemory
 
 
+from typing import Dict, List, Tuple
+from omegaconf import DictConfig
+from torch import Tensor
+from transformers import PreTrainedTokenizerFast
+
+
 class EntityRankingModel(nn.Module):
-	def __init__(self, config, train_config):
+	def __init__(self, model_config: DictConfig, train_config: DictConfig):
 		super(EntityRankingModel, self).__init__()
-		self.config = config
+		self.config = model_config
 		self.train_config = train_config
 
 		# Dropout module - Used during training
 		self.drop_module = nn.Dropout(p=train_config.dropout_rate)
 
 		# Document encoder + Mention proposer
-		self.mention_proposer = MentionProposalModule(config, train_config, drop_module=self.drop_module)
+		self.mention_proposer = MentionProposalModule(
+			self.config, train_config, drop_module=self.drop_module)
 
 		# Clustering module
-		span_emb_size = self.mention_proposer.span_emb_size
+		span_emb_size: int = self.mention_proposer.span_emb_size
 		# Use of genre feature in clustering or not
 		if self.config.metadata_params.use_genre_feature:
-			config.memory.num_feats = 3
+			self.config.memory.num_feats = 3
 
 		self.memory_net = EntityMemory(
-			config=config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
+			config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
 	@property
 	def device(self) -> torch.device:
 		return self.mention_proposer.device
 
-	def get_params(self, named=False):
+	def get_params(self, named=False) -> Tuple[List, List]:
 		encoder_params, mem_params = [], []
 		for name, param in self.named_parameters():
 			elem = (name, param) if named else param
@@ -43,10 +50,10 @@ class EntityRankingModel(nn.Module):
 
 		return encoder_params, mem_params
 
-	def get_tokenizer(self):
+	def get_tokenizer(self) -> PreTrainedTokenizerFast:
 		return self.mention_proposer.doc_encoder.get_tokenizer()
 
-	def get_metadata(self, document):
+	def get_metadata(self, document: Dict) -> Dict:
 		meta_params = self.config.metadata_params
 		if meta_params.use_genre_feature:
 			doc_class = document["doc_key"][:2]
@@ -59,7 +66,7 @@ class EntityRankingModel(nn.Module):
 		else:
 			return {}
 
-	def new_ignore_tuple_to_idx(self, action_tuple_list):
+	def new_ignore_tuple_to_idx(self, action_tuple_list: List[Tuple[int, str]]) -> List:
 		action_indices = []
 		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
 
@@ -79,7 +86,7 @@ class EntityRankingModel(nn.Module):
 		# The first max_ents are all overwrites - We skip that part
 		if len(action_indices) > max_ents:
 			action_indices = action_indices[max_ents:]
-			action_indices = torch.tensor(action_indices, device=self.device)
+			# action_indices = torch.tensor(action_indices, device=self.device)
 			return action_indices
 		else:
 			return []
@@ -119,7 +126,7 @@ class EntityRankingModel(nn.Module):
 
 		return coref_loss
 
-	def forward_training(self, document):
+	def forward_training(self, document: Dict) -> Dict:
 		# Initialize loss dictionary
 		loss_dict = {'total': None}
 
@@ -133,10 +140,11 @@ class EntityRankingModel(nn.Module):
 		mention_emb_list = proposer_output_dict['ment_emb_list']
 
 		pred_mentions_list = pred_mentions.tolist()
-		gt_actions = get_gt_actions(pred_mentions_list, document)
+		gt_actions: List[Tuple[int, str]] = get_gt_actions(pred_mentions_list, document)
 
-		metadata = self.get_metadata(document)
-		coref_new_list = self.memory_net.forward_training(pred_mentions, mention_emb_list, gt_actions, metadata)
+		metadata: Dict = self.get_metadata(document)
+		coref_new_list: List[Tensor] = self.memory_net.forward_training(
+			pred_mentions, mention_emb_list, gt_actions, metadata)
 
 		if 'ment_loss' in proposer_output_dict:
 			loss_dict = {'total': proposer_output_dict['ment_loss'], 'entity': proposer_output_dict['ment_loss']}
@@ -150,7 +158,7 @@ class EntityRankingModel(nn.Module):
 
 		return loss_dict
 
-	def forward(self, document):
+	def forward(self, document: Dict) -> Tuple[List, List, List, List]:
 		'''
 		Process document chunk by chunk.
 		Pass along the previous clusters

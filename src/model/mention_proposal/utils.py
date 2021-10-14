@@ -1,9 +1,10 @@
 import torch
-from typing import Tuple, Any
+from typing import Tuple
+from torch import Tensor
 
 
 def sort_mentions(
-				ment_starts: torch.Tensor, ment_ends: torch.Tensor, return_sorted_indices=False) -> Tuple:
+				ment_starts: Tensor, ment_ends: Tensor, return_sorted_indices=False) -> Tuple:
 	sort_scores = ment_starts + 1e-5 * ment_starts
 	_, sorted_indices = torch.sort(sort_scores, 0)
 

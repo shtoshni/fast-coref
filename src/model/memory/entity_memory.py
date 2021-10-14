@@ -5,7 +5,7 @@ import torch.nn as nn
 
 from omegaconf import DictConfig
 from typing import Dict, Tuple, List
-from torch import Tensor as T
+from torch import Tensor
 
 
 class EntityMemory(BaseMemory):
@@ -22,14 +22,14 @@ class EntityMemory(BaseMemory):
 				drop_module=drop_module)
 
 	def predict_new_or_ignore_learned(
-					self, ment_emb: T, mem_vectors: T,
-					feature_embs: T, ment_feature_embs: T) -> Tuple[T, int, str]:
+					self, ment_emb: Tensor, mem_vectors: Tensor,
+					feature_embs: Tensor, ment_feature_embs: Tensor) -> Tuple[Tensor, int, str]:
 		# Fertility Score
 		mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
 		ment_fert_input = torch.unsqueeze(torch.cat([ment_emb, ment_feature_embs], dim=-1), dim=0)
 		fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
 
-		fert_scores: T = self.fert_mlp(fert_input)
+		fert_scores: Tensor = self.fert_mlp(fert_input)
 		fert_scores = torch.squeeze(fert_scores, dim=-1)
 
 		min_idx = int(torch.argmin(fert_scores).item())
@@ -45,8 +45,8 @@ class EntityMemory(BaseMemory):
 		return output
 
 	def predict_new_or_ignore_lru(
-					self, ment_emb: T, mem_vectors: T, feature_embs: T,
-					ment_feature_embs: T, lru_list: List[int]) -> Tuple[T, int, str]:
+					self, ment_emb: Tensor, mem_vectors: Tensor, feature_embs: Tensor,
+					ment_feature_embs: Tensor, lru_list: List[int]) -> Tuple[Tensor, int, str]:
 		lru_cell = lru_list[0]
 		mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
 		ment_fert_input = torch.cat([ment_emb, ment_feature_embs], dim=-1)
@@ -61,8 +61,8 @@ class EntityMemory(BaseMemory):
 			# No space - The new entity is not "fertile" enough
 			return output + (-1, 'n',)
 
-	def forward_training(self, ment_boundaries: List[List[T]], mention_emb_list: List[T],
-	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> List[T]:
+	def forward_training(self, ment_boundaries: List[List[Tensor]], mention_emb_list: List[Tensor],
+	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> List[Tensor]:
 		# Initialize memory
 		first_overwrite, coref_new_list = True, []
 		mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
@@ -87,7 +87,7 @@ class EntityMemory(BaseMemory):
 			action_str, cell_idx = gt_action_str, gt_cell_idx
 
 			num_ents: int = int(torch.sum((ent_counter > 0).long()).item())
-			cell_mask: torch.Tensor = (
+			cell_mask: Tensor = (
 							torch.arange(start=0, end=num_ents, device=self.device) == torch.tensor(cell_idx)).float()
 			mask = torch.unsqueeze(cell_mask, dim=1)
 			mask = mask.repeat(1, self.mem_size)
@@ -106,7 +106,7 @@ class EntityMemory(BaseMemory):
 		return coref_new_list
 
 	def forward(
-					self, ment_boundaries: List[List[T]], mention_emb_list: torch.Tensor, metadata: Dict,
+					self, ment_boundaries: List[List[Tensor]], mention_emb_list: Tensor, metadata: Dict,
 					memory_init: Dict = None) -> Tuple[List[Tuple[int, str]], Dict]:
 		# Initialize memory
 		if memory_init is not None:
@@ -115,7 +115,9 @@ class EntityMemory(BaseMemory):
 			mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
 
 		action_list = []  # argmax actions
-		first_overwrite = (True if torch.sum(ent_counter) == 0 else False)
+
+		# Boolean to track if we have started tracking any entities
+		first_overwrite: bool = (True if torch.sum(ent_counter) == 0 else False)
 
 		for ment_idx, ment_emb in enumerate(mention_emb_list):
 			ment_start, ment_end = ment_boundaries[ment_idx]
