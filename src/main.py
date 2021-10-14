@@ -29,8 +29,6 @@ def hydra_main(cfg):
 	if cfg.paths.best_model_path is None:
 		cfg.paths.best_model_path = path.join(cfg.paths.best_model_dir, cfg.paths.model_filename)
 
-	# print(cfg.datasets['litbank'])
-	# print(dict(cfg))
 	print(cfg.paths.conll_scorer)
 	Experiment(cfg)
 

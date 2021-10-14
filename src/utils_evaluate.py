@@ -1,9 +1,11 @@
+import collections
 import os
 import logging
 import torch
 import time
 import json
 from os import path
+from typing import Dict
 from collections import OrderedDict, Counter
 
 from coref_utils.metrics import CorefEvaluator
@@ -18,7 +20,7 @@ logger = logging.getLogger()
 
 
 def full_coref_evaluation(
-				config, model: EntityRankingModel, data_iter_map, dataset, split='dev',
+				config, model: EntityRankingModel, data_iter_map: Dict, dataset, split='dev',
 				final_eval=False, conll_data_dir=None):
 	"""Full coreference evaluation."""
 	model.eval()
@@ -86,8 +88,8 @@ def full_coref_evaluation(
 			f.write(json.dumps(log_example) + "\n")
 
 		# Print individual metrics
-		result_dict = OrderedDict()
-		perf_str = ""
+		result_dict: Dict = OrderedDict()
+		perf_str: str = ""
 		for indv_metric, indv_evaluator in zip(config.metrics, evaluator.evaluators):
 			perf_str += ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
 			result_dict[indv_metric] = OrderedDict()
@@ -156,7 +158,7 @@ def targeted_coref_evaluation(
 	with open(log_file, 'w') as f:
 		logger.info(f"Evaluating on {len(data_iter_map[split][dataset])} examples")
 		# Counter for keeping track of the key stats
-		counter = Counter()
+		counter: Dict = Counter()
 		for document in data_iter_map[split][dataset]:
 			action_list, pred_mentions, gt_actions, mention_scores = model(document)
 			predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)

@@ -2,15 +2,17 @@ import torch
 import torch.nn as nn
 from pytorch_utils.modules import MLP
 import math
+from omegaconf import DictConfig
+from typing import Dict, List, Tuple
+from torch import Tensor as T
 
 LOG2 = math.log(2)
 
 
 class BaseMemory(nn.Module):
-	def __init__(self, config, span_emb_size, drop_module):
+	def __init__(self, config: DictConfig, span_emb_size: int, drop_module: nn.Module):
 		super(BaseMemory, self).__init__()
 		self.config = config
-		# TODO - num feats
 
 		self.mem_size = span_emb_size
 		self.drop_module = drop_module
@@ -37,8 +39,10 @@ class BaseMemory(nn.Module):
 	def device(self) -> torch.device:
 		return next(self.mem_coref_mlp.parameters()).device
 
-	def initialize_memory(self, mem=None, ent_counter=None, last_mention_start=None):
-		if mem is None:
+	def initialize_memory(self, mem: T = None, ent_counter: T = None,
+	                      last_mention_start: T = None) -> Tuple[T, T, T]:
+		# Check for unintialized memory
+		if mem is None or ent_counter is None or last_mention_start is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)
 			ent_counter = torch.tensor([0.0]).to(self.device)
 			last_mention_start = torch.zeros(1).long().to(self.device)
@@ -46,7 +50,7 @@ class BaseMemory(nn.Module):
 		return mem, ent_counter, last_mention_start
 
 	@staticmethod
-	def get_bucket(count):
+	def get_bucket(count: T) -> T:
 		"Bucket distance and entity counters using the same logic."
 		logspace_idx = torch.floor(torch.log(count.float()) / LOG2).long() + 3
 		use_identity = (count <= 4).long()
@@ -54,29 +58,30 @@ class BaseMemory(nn.Module):
 		return torch.clamp(combined_idx, 0, 9)
 
 	@staticmethod
-	def get_distance_bucket(distances):
+	def get_distance_bucket(distances: T) -> T:
 		return BaseMemory.get_bucket(distances)
 
 	@staticmethod
-	def get_counter_bucket(count):
+	def get_counter_bucket(count: T) -> T:
 		return BaseMemory.get_bucket(count)
 
-	def get_distance_emb(self, distance):
+	def get_distance_emb(self, distance: T) -> T:
 		distance_tens = self.get_distance_bucket(distance)
 		distance_embs = self.distance_embeddings(distance_tens)
 		return distance_embs
 
-	def get_counter_emb(self, ent_counter):
+	def get_counter_emb(self, ent_counter: T) -> T:
 		counter_buckets = self.get_counter_bucket(ent_counter.long())
 		counter_embs = self.counter_embeddings(counter_buckets)
 		return counter_embs
 
 	@staticmethod
-	def get_coref_mask(ent_counter):
+	def get_coref_mask(ent_counter: T) -> T:
 		cell_mask = (ent_counter > 0.0).float()
 		return cell_mask
 
-	def get_feature_embs(self, ment_start, last_mention_start, ent_counter, metadata):
+	def get_feature_embs(
+					self, ment_start: T, last_mention_start: T, ent_counter: T, metadata: Dict) -> T:
 		distance_embs = self.get_distance_emb(ment_start - last_mention_start)
 		counter_embs = self.get_counter_emb(ent_counter)
 
@@ -91,7 +96,8 @@ class BaseMemory(nn.Module):
 		feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
 		return feature_embs
 
-	def get_coref_new_scores(self, ment_emb, mem_vectors, ent_counter, feature_embs, ment_score=0):
+	def get_coref_new_scores(
+					self, ment_emb: T, mem_vectors: T, ent_counter: T, feature_embs: T) -> T:
 		# Repeat the query vector for comparison against all cells
 		num_ents = mem_vectors.shape[0]
 		rep_ment_emb = ment_emb.repeat(num_ents, 1)  # M x H
@@ -105,7 +111,7 @@ class BaseMemory(nn.Module):
 				[mem_vectors, rep_ment_emb, mem_vectors * rep_ment_emb, feature_embs], dim=-1)
 			pair_score = self.mem_coref_mlp(pair_vec)
 
-		coref_score = torch.squeeze(pair_score, dim=-1) + ment_score  # M
+		coref_score = torch.squeeze(pair_score, dim=-1)  # M
 
 		coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0], device=self.device)], dim=0)
 		coref_new_score = torch.cat(([coref_score, torch.tensor([0.0], device=self.device)]), dim=0)

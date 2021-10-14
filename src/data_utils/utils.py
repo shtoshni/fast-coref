@@ -1,8 +1,9 @@
 import json
 from os import path
+from typing import Dict
 
 
-def get_data_file(data_dir, split, max_segment_len):
+def get_data_file(data_dir: str, split: str, max_segment_len: int) -> str:
     jsonl_file = path.join(data_dir, "{}.{}.jsonlines".format(split, max_segment_len))
     if path.exists(jsonl_file):
         return jsonl_file
@@ -15,8 +16,8 @@ def get_data_file(data_dir, split, max_segment_len):
 
 
 def load_dataset(
-        data_dir,  singleton_file=None, max_segment_len=2048,
-        num_train_docs=None, num_eval_docs=None, num_test_docs=None):
+        data_dir: str,  singleton_file: str = None, max_segment_len: int =2048,
+        num_train_docs: int = None, num_eval_docs: int = None, num_test_docs: int = None) -> Dict:
     all_splits = []
     for split in ["train", "dev", "test"]:
         jsonl_file = get_data_file(data_dir, split, max_segment_len)
@@ -45,7 +46,7 @@ def load_dataset(
             "test": test_data[:num_test_docs]}
 
 
-def load_eval_dataset(data_dir, num_test_docs, max_segment_len=2048):
+def load_eval_dataset(data_dir: str, num_test_docs: int, max_segment_len: int =2048) -> Dict:
     jsonl_file = get_data_file(data_dir, "test", max_segment_len)
 
     split_data = []
