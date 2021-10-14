@@ -160,8 +160,8 @@ class Experiment:
 			self.model_path = self.config.paths.model_path
 			self.best_model_path = self.config.paths.model_path
 		else:
-			self.model_path = path.join(conf_paths.model_dir, conf_paths.model_file)
-			self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_file)
+			self.model_path = path.join(conf_paths.model_dir, conf_paths.model_filename)
+			self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_filename)
 
 		if last_checkpoint:
 			# Resume training
