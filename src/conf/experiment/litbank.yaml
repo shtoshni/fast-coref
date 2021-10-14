@@ -1,0 +1,17 @@
+# @package _global_
+
+# Vanilla LitBank configuration
+
+# Model name in CRAC 2021: longdoc LB_0
+
+
+defaults:
+  - override /datasets: litbank
+  - override /trainer: train.yaml
+
+trainer:
+  log_frequency: 10
+  max_evals: 100
+  patience: 10
+
+

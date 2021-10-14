@@ -29,8 +29,9 @@ def hydra_main(cfg):
 	if cfg.paths.best_model_path is None:
 		cfg.paths.best_model_path = path.join(cfg.paths.best_model_dir, cfg.paths.model_filename)
 
-	print(cfg.paths.conll_scorer)
+	print(OmegaConf.to_yaml(cfg))
 	Experiment(cfg)
+
 
 
 if __name__ == "__main__":

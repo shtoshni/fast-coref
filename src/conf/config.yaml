@@ -1,10 +1,12 @@
 defaults:
+  - _self_
   - datasets: litbank
   - model: model
   - optimizer: adam
   - trainer: train
   - infra: local
-  - _self_
+
+  - experiment: null
 
 
 metrics: ['MUC', 'Bcub', 'CEAFE']
@@ -16,7 +18,6 @@ eval_all: False
 paths:
   resource_dir: ${infra.work_dir}/../coref_resources
   base_data_dir: ${paths.resource_dir}/data
-#  data_dir: ${paths.base_data_dir}/${dataset.name}/${model.doc_encoder.transformer.name}
   conll_scorer: ${paths.resource_dir}/reference-coreference-scorers/scorer.pl
   base_model_dir: ${infra.work_dir}/models
   model_dir: null

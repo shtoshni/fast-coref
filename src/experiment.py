@@ -42,8 +42,7 @@ class Experiment:
 		self._load_data()
 
 		# Step 3 - Load model and resume training if required
-
-		# Initialize dictionary to track key training variables
+		# Firstly initialize dictionary to track key training variables
 		self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0, 'peak_memory': 0.0}
 
 		if self.eval_model:
@@ -86,6 +85,10 @@ class Experiment:
 			num_eval_docs: Optional[int] = attributes.get('num_eval_docs', None)
 			num_test_docs: Optional[int] = attributes.get('num_test_docs', None)
 			singleton_file: Optional[str] = attributes.get('singleton_file', None)
+			if singleton_file is not None:
+				singleton_file = path.join(base_data_dir, singleton_file)
+				if path.exists(singleton_file):
+					logger.info("Singleton file found:", singleton_file)
 
 			# Data directory is a function of dataset name and tokenizer used
 			data_dir = path.join(path.join(base_data_dir, dataset_name), model_name)

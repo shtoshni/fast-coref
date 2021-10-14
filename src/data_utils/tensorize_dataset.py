@@ -1,12 +1,11 @@
 import torch
 from typing import List, Dict, Union
-from transformers import LongformerTokenizerFast, BertTokenizerFast
+from transformers import PreTrainedTokenizerFast
 from torch import Tensor
 
 
 class TensorizeDataset:
-	def __init__(self, tokenizer: Union[LongformerTokenizerFast, BertTokenizerFast],
-	             remove_singletons: bool = False) -> None:
+	def __init__(self, tokenizer: PreTrainedTokenizerFast, remove_singletons: bool = False) -> None:
 		self.tokenizer = tokenizer
 		self.remove_singletons = remove_singletons
 		self.device = torch.device("cpu")

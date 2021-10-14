@@ -7,118 +7,118 @@ from transformers import LongformerTokenizerFast, AutoTokenizer
 
 
 class BaseDocumentState:
-    def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.orig_subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = []
-        self.coref_stacks = collections.defaultdict(list)
-        self.segment_info = []
-        self.speakers = []
-        self.cluster_str = []
+	def __init__(self, key):
+		self.doc_key = key
+		self.sentence_end = []
+		self.token_end = []
+		self.tokens = []
+		self.subtokens = []
+		self.info = []
+		self.segments = []
+		self.subtoken_map = []
+		self.orig_subtoken_map = []
+		self.segment_subtoken_map = []
+		self.sentence_map = []
+		self.pronouns = []
+		self.clusters = []
+		self.coref_stacks = collections.defaultdict(list)
+		self.segment_info = []
+		self.speakers = []
+		self.cluster_str = []
 
-    def finalize(self):
-        raise NotImplementedError
+	def finalize(self):
+		raise NotImplementedError
 
 
 def normalize_word(word):
-    if word == "/." or word == "/?":
-        return word[1:]
-    else:
-        return word
+	if word == "/." or word == "/?":
+		return word[1:]
+	else:
+		return word
 
 
 def flatten(input_list):
-    return [item for sublist in input_list for item in sublist]
+	return [item for sublist in input_list for item in sublist]
 
 
 def split_into_segments(document_state, max_segment_len, constraints1, constraints2):
-    current = 0
-    while current < len(document_state.subtokens):
-        end = min(current + max_segment_len - 1 - 2,
-                  len(document_state.subtokens) - 1)
-        while end >= current and not constraints1[end]:
-            end -= 1
-        if end < current:
-            end = min(current + max_segment_len - 1 - 2,
-                      len(document_state.subtokens) - 1)
-            while end >= current and not constraints2[end]:
-                end -= 1
-            if end < current:
-                raise Exception("Can't find valid segment")
-        document_state.segments.append(
-            document_state.subtokens[current:end + 1])
-        subtoken_map = document_state.subtoken_map[current: end + 1]
-        document_state.segment_subtoken_map.append(subtoken_map)
-        if hasattr(document_state, 'info'):
-            info = document_state.info[current: end + 1]
-            document_state.segment_info.append(info)
-        current = end + 1
+	current = 0
+	while current < len(document_state.subtokens):
+		end = min(current + max_segment_len - 1 - 2,
+		          len(document_state.subtokens) - 1)
+		while end >= current and not constraints1[end]:
+			end -= 1
+		if end < current:
+			end = min(current + max_segment_len - 1 - 2,
+			          len(document_state.subtokens) - 1)
+			while end >= current and not constraints2[end]:
+				end -= 1
+			if end < current:
+				raise Exception("Can't find valid segment")
+		document_state.segments.append(
+			document_state.subtokens[current:end + 1])
+		subtoken_map = document_state.subtoken_map[current: end + 1]
+		document_state.segment_subtoken_map.append(subtoken_map)
+		if hasattr(document_state, 'info'):
+			info = document_state.info[current: end + 1]
+			document_state.segment_info.append(info)
+		current = end + 1
 
 
 def get_sentence_map(segments, sentence_end):
-    current = 0
-    sent_map = []
-    sent_end_idx = 0
-    assert len(sentence_end) == sum([len(s) for s in segments])
-    for segment in segments:
-        for i in range(len(segment)):
-            sent_map.append(current)
-            current += int(sentence_end[sent_end_idx])
-            sent_end_idx += 1
-    return sent_map
+	current = 0
+	sent_map = []
+	sent_end_idx = 0
+	assert len(sentence_end) == sum([len(s) for s in segments])
+	for segment in segments:
+		for i in range(len(segment)):
+			sent_map.append(current)
+			current += int(sentence_end[sent_end_idx])
+			sent_end_idx += 1
+	return sent_map
 
 
 def get_tokenizer(model_str):
-    if 'longformer' in model_str:
-        tokenizer = LongformerTokenizerFast.from_pretrained(model_str, add_prefix_space=True)
-        tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
+	if 'longformer' in model_str:
+		tokenizer = LongformerTokenizerFast.from_pretrained(model_str, add_prefix_space=True)
+		tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
 
-        def tokenize_fn(word, self=tokenizer):
-            return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
+		def tokenize_fn(word, self=tokenizer):
+			return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
 
-        tokenizer.tokenize = tokenize_fn
+		tokenizer.tokenize = tokenize_fn
 
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(model_str)
+	else:
+		tokenizer = AutoTokenizer.from_pretrained(model_str)
 
-    return tokenizer
+	return tokenizer
 
 
 def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('input_dir', type=str, help="Input directory.")
-    parser.add_argument('output_dir', type=str, help="Output directory.")
-    parser.add_argument('-model',  default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
-                        type=str, help="Model type.")
-    parser.add_argument('-seg_len', default=2048, help="Max. segment length")
-    parser.add_argument('-add_speaker', default=False, action="store_true",
-                        help="Speaker represented in text.")
+	parser = argparse.ArgumentParser()
+	parser.add_argument('input_dir', type=str, help="Input directory.")
+	parser.add_argument('output_dir', type=str, help="Output directory.")
+	parser.add_argument('-model', default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
+	                    type=str, help="Model type.")
+	parser.add_argument('-seg_len', default=2048, help="Max. segment length")
+	parser.add_argument('-add_speaker', default=False, action="store_true",
+	                    help="Speaker represented in text.")
 
-    args = parser.parse_args()
-    assert (path.exists(args.input_dir))
-    assert (MODEL_TO_MAX_LEN[args.model] >= args.seg_len)
+	args = parser.parse_args()
+	assert (path.exists(args.input_dir))
+	assert (MODEL_TO_MAX_LEN[args.model] >= args.seg_len)
 
-    print(f'Model: {args.model}, Segment length: {args.seg_len}')
-    args.model = MODEL_TO_MODEL_STR[args.model]
-    args.tokenizer = get_tokenizer(args.model)
+	print(f'Model: {args.model}, Segment length: {args.seg_len}')
+	args.model = MODEL_TO_MODEL_STR[args.model]
+	args.tokenizer = get_tokenizer(args.model)
 
-    print(args.tokenizer.tokenize("Hello"))
+	print(args.tokenizer.tokenize("Hello"))
 
-    if not os.path.exists(args.output_dir):
-        os.makedirs(args.output_dir)
+	if not os.path.exists(args.output_dir):
+		os.makedirs(args.output_dir)
 
-    return args
+	return args
 
 
-if __name__=='__main__':
-    parse_args()
+if __name__ == '__main__':
+	parse_args()
