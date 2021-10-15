@@ -10,6 +10,8 @@ LOG2 = math.log(2)
 
 
 class BaseMemory(nn.Module):
+	"""Base clustering module."""
+
 	def __init__(self, config: DictConfig, span_emb_size: int, drop_module: nn.Module):
 		super(BaseMemory, self).__init__()
 		self.config = config
@@ -41,6 +43,7 @@ class BaseMemory(nn.Module):
 
 	def initialize_memory(self, mem: Tensor = None, ent_counter: Tensor = None,
 	                      last_mention_start: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
+		"""Method to initialize the clusters and related bookkeeping varioables."""
 		# Check for unintialized memory
 		if mem is None or ent_counter is None or last_mention_start is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)
@@ -51,7 +54,7 @@ class BaseMemory(nn.Module):
 
 	@staticmethod
 	def get_bucket(count: Tensor) -> Tensor:
-		"Bucket distance and entity counters using the same logic."
+		"""Bucket distance and entity counters using the same logic."""
 		logspace_idx = torch.floor(torch.log(count.float()) / LOG2).long() + 3
 		use_identity = (count <= 4).long()
 		combined_idx = use_identity * count + (1 - use_identity) * logspace_idx
@@ -77,6 +80,7 @@ class BaseMemory(nn.Module):
 
 	@staticmethod
 	def get_coref_mask(ent_counter: Tensor) -> Tensor:
+		"""Mask for whether the cluster representation corresponds to any entity or not."""
 		cell_mask = (ent_counter > 0.0).float()
 		return cell_mask
 
@@ -100,6 +104,23 @@ class BaseMemory(nn.Module):
 	def get_coref_new_scores(
 					self, ment_emb: Tensor, mem_vectors: Tensor, ent_counter: Tensor,
 					feature_embs: Tensor) -> Tensor:
+		"""Calculate the coreference score with existing clusters.
+
+		For creating a new cluster we use a dummy score of 0.
+		This is a free variable and this idea is borrowed from Lee et al 2017
+
+		Args:
+			ment_emb (d'): Mention representation
+			mem_vectors (M x d'): Cluster representations
+			ent_counter (M): Mention counter of clusters.
+			feature_embs (M x p): Embedding of features such as distance from last
+				mention of the cluster.
+
+		Returns:
+			coref_new_score (M + 1):
+				Coref scores concatenated with the score of forming a new cluster.
+		"""
+
 		# Repeat the query vector for comparison against all cells
 		num_ents = mem_vectors.shape[0]
 		rep_ment_emb = ment_emb.repeat(num_ents, 1)  # M x H
@@ -115,13 +136,17 @@ class BaseMemory(nn.Module):
 
 		coref_score = torch.squeeze(pair_score, dim=-1)  # M
 
-		coref_new_mask = torch.cat([self.get_coref_mask(ent_counter), torch.tensor([1.0], device=self.device)], dim=0)
+		coref_new_mask = torch.cat(
+			[self.get_coref_mask(ent_counter), torch.tensor([1.0], device=self.device)], dim=0)
+		# Use a dummy score of 0 for froming a new cluster
 		coref_new_score = torch.cat(([coref_score, torch.tensor([0.0], device=self.device)]), dim=0)
 		coref_new_score = coref_new_score * coref_new_mask + (1 - coref_new_mask) * (-1e4)
 		return coref_new_score
 
 	@staticmethod
 	def assign_cluster(coref_new_scores: Tensor) -> Tuple[int, str]:
+		"""Decode the action from argmax of clustering scores"""
+
 		num_ents = coref_new_scores.shape[0] - 1
 		pred_max_idx = torch.argmax(coref_new_scores).item()
 		if pred_max_idx < num_ents:
@@ -133,10 +158,12 @@ class BaseMemory(nn.Module):
 
 	def coref_update(self, ment_emb: Tensor, mem_vectors: Tensor,
 	                 cell_idx: int, ent_counter: Tensor) -> Tensor:
+		"""Updates the cluster representation given the new mention representation."""
+
 		if self.config.entity_rep == 'learned_avg':
 			alpha_wt = torch.sigmoid(
-				self.alpha(torch.cat([mem_vectors[cell_idx, :], ment_emb], dim=0)))
-			coref_vec = alpha_wt * mem_vectors[cell_idx, :] + (1 - alpha_wt) * ment_emb
+				self.alpha(torch.cat([mem_vectors[cell_idx], ment_emb], dim=0)))
+			coref_vec = alpha_wt * mem_vectors[cell_idx] + (1 - alpha_wt) * ment_emb
 		elif self.config.entity_rep == 'max':
 			coref_vec = torch.max(mem_vectors[cell_idx], ment_emb)
 		else:

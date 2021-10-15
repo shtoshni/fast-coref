@@ -14,6 +14,23 @@ from transformers import PreTrainedTokenizerFast
 
 
 class EntityRankingModel(nn.Module):
+	"""
+	Coreference model based on Entity-Ranking paradigm.
+
+	In the entity-ranking paradigm, given a new mention we rank the different
+	entity clusters to determine the clustering updates. Entity-Ranking paradigm
+	allows for a naturally scalable solution to coreference resolution.
+	Reference: Rahman and Ng [https://arxiv.org/pdf/1405.5202.pdf]
+
+	This particular implementation represents the entities/clusters via fixed-dimensional
+	dense representations, typically a simple avereage of mention representations.
+	Clustering is performed in an online, autoregressive manner where mentions are
+	processed in a left-to-right manner.
+	References:
+		Toshniwal et al [https://arxiv.org/pdf/2010.02807.pdf]
+	  Toshniwal et al [https://arxiv.org/pdf/2109.09667.pdf]
+	"""
+
 	def __init__(self, model_config: DictConfig, train_config: DictConfig):
 		super(EntityRankingModel, self).__init__()
 		self.config = model_config
@@ -40,6 +57,8 @@ class EntityRankingModel(nn.Module):
 		return self.mention_proposer.device
 
 	def get_params(self, named=False) -> Tuple[List, List]:
+		"""Returns a tuple of document encoder parameters and rest of the model params."""
+
 		encoder_params, mem_params = [], []
 		for name, param in self.named_parameters():
 			elem = (name, param) if named else param
@@ -51,9 +70,13 @@ class EntityRankingModel(nn.Module):
 		return encoder_params, mem_params
 
 	def get_tokenizer(self) -> PreTrainedTokenizerFast:
+		"""Returns tokenizer used by the document encoder."""
+
 		return self.mention_proposer.doc_encoder.get_tokenizer()
 
 	def get_metadata(self, document: Dict) -> Dict:
+		"""Extract metadata such as document genre from document."""
+
 		meta_params = self.config.metadata_params
 		if meta_params.use_genre_feature:
 			doc_class = document["doc_key"][:2]
@@ -91,8 +114,23 @@ class EntityRankingModel(nn.Module):
 		else:
 			return []
 
-	def calculate_coref_loss(self, action_prob_list, action_tuple_list):
-		"Calculates the coreference loss given the action probability list and ground truth actions."
+	def calculate_coref_loss(self, action_prob_list: List, action_tuple_list: List[Tuple[int, str]]):
+		"""Calculates the coreference loss for the autoregressive online clustering module.
+
+		Args:
+			action_prob_list (List):
+				Probability of each clustering action i.e. mention is merged with existing clusters
+				or a new cluster is created.
+			action_tuple_list (List[Tuple[int, str]]):
+				Ground truth actions represented as a tuple of cluster index and action string.
+				'c' represents that the mention is coreferent with existing clusters while
+				'o' represents that the mention represents a new cluster.
+
+		Returns:
+			coref_loss (torch.Tensor):
+				The scalar tensor representing the coreference loss.
+		"""
+
 		num_ents, counter = 0, 0
 		coref_loss = 0.0
 
@@ -119,6 +157,7 @@ class EntityRankingModel(nn.Module):
 
 			target = torch.tensor([gt_idx], device=self.device)
 			weight = torch.ones_like(action_prob_list[counter], device=self.device)
+			# TODO(shtoshni): Use cross-entropy if label smoothing is not positive.
 			label_smoothing_fn = LabelSmoothingLoss(smoothing=self.train_config.label_smoothing_wt, dim=0)
 
 			coref_loss += label_smoothing_fn(pred=action_prob_list[counter], target=target, weight=weight)
@@ -127,25 +166,39 @@ class EntityRankingModel(nn.Module):
 		return coref_loss
 
 	def forward_training(self, document: Dict) -> Dict:
+		"""Forward pass for training.
+
+		Args:
+			document: The tensorized document.
+
+		Returns:
+			loss_dict (Dict): Loss dictionary containing the losses of different stages of the model.
+		"""
+
 		# Initialize loss dictionary
 		loss_dict = {'total': None}
 
 		# Encode documents and get mentions
 		proposer_output_dict = self.mention_proposer(document)
-
 		pred_mentions = proposer_output_dict.get('ments', None)
+		# Only cluster if there are mentions to cluster over
 		if pred_mentions is None:
 			return loss_dict
 
 		mention_emb_list = proposer_output_dict['ment_emb_list']
-
 		pred_mentions_list = pred_mentions.tolist()
+
+		# Get ground truth clustering mentions
 		gt_actions: List[Tuple[int, str]] = get_gt_actions(pred_mentions_list, document)
 
+		# Metadata such as document genre can be used by model for clustering
 		metadata: Dict = self.get_metadata(document)
+
+		# Perform teacher-forced clustering to get gt action probabilities
 		coref_new_list: List[Tensor] = self.memory_net.forward_training(
 			pred_mentions, mention_emb_list, gt_actions, metadata)
 
+		# Consolidate different losses in one dictionary
 		if 'ment_loss' in proposer_output_dict:
 			loss_dict = {'total': proposer_output_dict['ment_loss'], 'entity': proposer_output_dict['ment_loss']}
 		else:
@@ -159,11 +212,21 @@ class EntityRankingModel(nn.Module):
 		return loss_dict
 
 	def forward(self, document: Dict) -> Tuple[List, List, List, List]:
-		"""Perform streaming corefence for document chunk-by-chunk.
+		"""Forward pass of the streaming coreference model.
 
 		This method performs streaming coreference. The entity clusters from previous
 		documents chunks are represented as vectors and passed along to the processing
 		of subsequent chunks along with the metadata associated with these clusters.
+
+		Args:
+			document (Dict): Tensorized document
+
+		Returns:
+			 pred_mentions_list (List): Mentions predicted by the mention proposal module
+			 mention_scores (List): Scores assigned by the mention proposal module for
+			      the predicted mentions
+			 gt_actions (List): Ground truth clustering actions; useful for calculating oracle performance
+			 action_list (List): Actions predicted by the clustering module for the predicted mentions
 		'"""
 
 		# Initialize lists to track all the actions taken, mentions predicted across the chunks

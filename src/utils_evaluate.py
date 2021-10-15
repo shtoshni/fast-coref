@@ -62,9 +62,9 @@ def full_coref_evaluation(
 		logger.info(f"Evaluating on {len(data_iter_map[split][dataset])} examples")
 		for example in data_iter_map[split][dataset]:
 			start_time = time.time()
-			action_list, pred_mentions, gt_actions, mention_scores = model(example)
+			pred_mentions, mention_scores, gt_actions, pred_actions = model(example)
 			# Predicted cluster
-			raw_predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+			raw_predicted_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 			predicted_clusters, mention_to_predicted = \
 				get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
 			gold_clusters, mention_to_gold = \
@@ -77,7 +77,7 @@ def full_coref_evaluation(
 			coref_predictions[example["doc_key"]] = predicted_clusters
 			subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
-			total_actions += len(action_list)
+			total_actions += len(pred_actions)
 
 			# Oracle clustering
 			oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
@@ -91,7 +91,7 @@ def full_coref_evaluation(
 			if cluster_threshold != 1:
 				# For cluster threshold 1, raw and processed clusters are one and the same
 				log_example["raw_predicted_clusters"] = raw_predicted_clusters
-			log_example["pred_actions"] = action_list
+			log_example["pred_actions"] = pred_actions
 			log_example["predicted_clusters"] = predicted_clusters
 
 			del log_example["tensorized_sent"]
@@ -180,8 +180,8 @@ def targeted_coref_evaluation(
 		# Counter for keeping track of the key stats
 		counter: Dict = Counter()
 		for document in data_iter_map[split][dataset]:
-			action_list, pred_mentions, gt_actions, mention_scores = model(document)
-			predicted_clusters = action_sequences_to_clusters(action_list, pred_mentions)
+			pred_mentions, mention_scores, gt_actions, pred_actions = model(document)
+			predicted_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 
 			log_example = dict(document)
 			del log_example["tensorized_sent"]
