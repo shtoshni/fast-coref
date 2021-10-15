@@ -584,7 +584,6 @@ class Experiment:
 				save_dict['optimizer'][param_group] = self.optimizer[param_group].state_dict()
 				save_dict['scheduler'][param_group] = self.optim_scheduler[param_group].state_dict()
 
-		print(save_dict.keys())
 		torch.save(save_dict, location)
 		logging.info(f"Model saved at: {location}")
 
