@@ -239,23 +239,11 @@ class EntityRankingModel(nn.Module):
 		for idx in range(0, len(document["sentences"])):
 			num_tokens = len(document["sentences"][idx])
 
-			gt_clusters = []  # Filter through gt_clusters
-			# for orig_cluster in document.get("clusters", []):
-			# 	cluster = []
-			# 	for mention in orig_cluster:
-			# 		ment_start, ment_end = mention[:2]
-			# 		if ment_start >= token_offset and ment_end < (token_offset + num_tokens):
-			# 			cluster.append((ment_start - token_offset, ment_end - token_offset))
-			#
-			# 	if len(cluster):
-			# 		gt_clusters.append(cluster)
-
 			cur_example = {
 				"tensorized_sent": document["tensorized_sent"][idx],
 				"sentence_map": document["sentence_map"][token_offset: token_offset + num_tokens],
 				"subtoken_map": document["subtoken_map"][token_offset: token_offset + num_tokens],
 				"sent_len_list": [document["sent_len_list"][idx]],
-				"clusters": gt_clusters,
 			}
 
 			# Pass along other metadata

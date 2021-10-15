@@ -557,6 +557,7 @@ class Experiment:
 			if not path.exists(doc_encoder_dir):
 				os.makedirs(doc_encoder_dir)
 
+			logger.info(f"Encoder saved at {doc_encoder_dir}")
 			# Save the encoder
 			self.model.mention_proposer.doc_encoder.lm_encoder.save_pretrained(
 				save_directory=doc_encoder_dir, save_config=True)
