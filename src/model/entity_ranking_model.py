@@ -230,7 +230,7 @@ class EntityRankingModel(nn.Module):
 		'"""
 
 		# Initialize lists to track all the actions taken, mentions predicted across the chunks
-		action_list, pred_mentions_list, gt_actions, mention_scores = [], [], [], []
+		pred_mentions_list, mention_scores, pred_actions = [], [], []
 		# Initialize entity clusters and current document token offset
 		entity_cluster_states, token_offset = None, 0
 
@@ -239,23 +239,23 @@ class EntityRankingModel(nn.Module):
 		for idx in range(0, len(document["sentences"])):
 			num_tokens = len(document["sentences"][idx])
 
-			clusters = []
-			for orig_cluster in document.get("clusters", []):
-				cluster = []
-				for mention in orig_cluster:
-					ment_start, ment_end = mention[:2]
-					if ment_start >= token_offset and ment_end < (token_offset + num_tokens):
-						cluster.append((ment_start - token_offset, ment_end - token_offset))
-
-				if len(cluster):
-					clusters.append(cluster)
+			gt_clusters = []  # Filter through gt_clusters
+			# for orig_cluster in document.get("clusters", []):
+			# 	cluster = []
+			# 	for mention in orig_cluster:
+			# 		ment_start, ment_end = mention[:2]
+			# 		if ment_start >= token_offset and ment_end < (token_offset + num_tokens):
+			# 			cluster.append((ment_start - token_offset, ment_end - token_offset))
+			#
+			# 	if len(cluster):
+			# 		gt_clusters.append(cluster)
 
 			cur_example = {
 				"tensorized_sent": document["tensorized_sent"][idx],
 				"sentence_map": document["sentence_map"][token_offset: token_offset + num_tokens],
 				"subtoken_map": document["subtoken_map"][token_offset: token_offset + num_tokens],
 				"sent_len_list": [document["sent_len_list"][idx]],
-				"clusters": clusters,
+				"clusters": gt_clusters,
 			}
 
 			# Pass along other metadata
@@ -267,17 +267,20 @@ class EntityRankingModel(nn.Module):
 			if proposer_output_dict.get('ments', None) is None:
 				token_offset += num_tokens
 				continue
+
+			# Add the current document offset
 			cur_pred_mentions = proposer_output_dict.get('ments') + token_offset
+			# Update the document offset for next iteration
 			token_offset += num_tokens
 
 			pred_mentions_list.extend(cur_pred_mentions.tolist())
 			mention_scores.extend(proposer_output_dict['ment_scores'].tolist())
 
 			# Pass along entity clusters from previous chunks while processing next chunks
-			cur_action_list, entity_cluster_states = self.memory_net(
+			cur_pred_actions, entity_cluster_states = self.memory_net(
 				cur_pred_mentions, proposer_output_dict['ment_emb_list'], metadata,
 				memory_init=entity_cluster_states)
-			action_list.extend(cur_action_list)
+			pred_actions.extend(cur_pred_actions)
 
-		gt_actions = get_gt_actions(pred_mentions_list, document)
-		return pred_mentions_list,  mention_scores, gt_actions, action_list
+		gt_actions = get_gt_actions(pred_mentions_list, document)  # Useful for oracle calcs
+		return pred_mentions_list,  mention_scores, gt_actions, pred_actions

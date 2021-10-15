@@ -103,7 +103,10 @@ class MentionProposalModule(nn.Module):
 
 	def get_mention_width_scores(
 					self, cand_starts: Tensor, cand_ends: Tensor) -> Tensor:
-		"""Scores for candidate mention based solely on their length."""
+		"""Scores for candidate mention based solely on their length.
+
+		This prior score is necessary because most mention spans tend to be shorter in width.
+		"""
 
 		span_width_idx = torch.clamp(
 			cand_ends - cand_starts, max=self.config.mention_params.max_span_width - 1)
