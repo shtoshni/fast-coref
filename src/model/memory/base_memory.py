@@ -44,6 +44,7 @@ class BaseMemory(nn.Module):
 	def initialize_memory(self, mem: Tensor = None, ent_counter: Tensor = None,
 	                      last_mention_start: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
 		"""Method to initialize the clusters and related bookkeeping varioables."""
+
 		# Check for unintialized memory
 		if mem is None or ent_counter is None or last_mention_start is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)
@@ -55,6 +56,7 @@ class BaseMemory(nn.Module):
 	@staticmethod
 	def get_bucket(count: Tensor) -> Tensor:
 		"""Bucket distance and entity counters using the same logic."""
+
 		logspace_idx = torch.floor(torch.log(count.float()) / LOG2).long() + 3
 		use_identity = (count <= 4).long()
 		combined_idx = use_identity * count + (1 - use_identity) * logspace_idx

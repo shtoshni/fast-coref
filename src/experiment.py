@@ -100,7 +100,7 @@ class Experiment:
 		# Load data
 		for dataset_name, attributes in self.config.datasets.items():
 			num_train_docs: Optional[int] = attributes.get('num_train_docs', None)
-			num_eval_docs: Optional[int] = attributes.get('num_eval_docs', None)
+			num_dev_docs: Optional[int] = attributes.get('num_dev_docs', None)
 			num_test_docs: Optional[int] = attributes.get('num_test_docs', None)
 			singleton_file: Optional[str] = attributes.get('singleton_file', None)
 			if singleton_file is not None:
@@ -140,7 +140,7 @@ class Experiment:
 				self.num_train_docs_map[dataset_name] = num_train_docs
 				raw_data_map[dataset_name] = load_dataset(
 					data_dir, singleton_file=singleton_file,
-					num_train_docs=num_train_docs, num_eval_docs=num_eval_docs,
+					num_train_docs=num_train_docs, num_dev_docs=num_dev_docs,
 					num_test_docs=num_test_docs,
 				)
 
@@ -406,6 +406,7 @@ class Experiment:
 		"""
 
 		self.model.eval()
+
 		# Dev performance
 		fscore_dict = {}
 		for dataset in self.data_iter_map['dev']:
@@ -505,6 +506,14 @@ class Experiment:
 		checkpoint = torch.load(location, map_location='cpu')
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 
+		if self.config.model.doc_encoder.finetune:
+			# Load the document encoder params if encoder is finetuned
+			doc_encoder_dir = path.join(path.dirname(location), self.config.paths.doc_encoder_dirname)
+
+			# Load the encoder
+			self.model.mention_proposer.doc_encoder.lm_encoder.from_pretrained(
+				pretrained_model_name_or_path=doc_encoder_dir)
+
 		if last_checkpoint:
 			# If resuming training, restore the optimizer state as well
 			for param_group in checkpoint['optimizer']:
@@ -520,22 +529,39 @@ class Experiment:
 			torch.set_rng_state(checkpoint['rng_state'])
 			np.random.set_state(checkpoint['np_rng_state'])
 
-	def save_model(self, location: str, last_checkpoint=True) -> None:
+	def save_model(self, location: os.PathLike, last_checkpoint=True) -> None:
 		"""Save model.
 
 		Args:
-			location: str
-				Location of checkpoint
-			last_checkpoint: bool
+			location: Location of checkpoint
+			last_checkpoint:
 				Whether the checkpoint is the last one saved or not.
 				If false, don't save optimizers and schedulers which take up a lot of space.
 		"""
 
 		model_state_dict = OrderedDict(self.model.state_dict())
-		if not self.config.model.doc_encoder.finetune:
-			for key in self.model.state_dict():
-				if 'lm_encoder.' in key:
-					del model_state_dict[key]
+		doc_encoder_state_dict = {}
+
+		# Separate the doc_encoder state dict
+		# We will save the model in two parts:
+		# (a) Doc encoder parameters - Useful for final upload to huggingface
+		# (b) Rest of the model parameters, optimizers, schedulers, and other bookkeeping variables
+		for key in self.model.state_dict():
+			if 'lm_encoder.' in key:
+				doc_encoder_state_dict[key] = model_state_dict[key]
+				del model_state_dict[key]
+
+		# Save the document encoder params
+		if self.config.model.doc_encoder.finetune:
+			doc_encoder_dir = path.join(path.dirname(location), self.config.paths.doc_encoder_dirname)
+			if not path.exists(doc_encoder_dir):
+				os.makedirs(doc_encoder_dir)
+
+			# Save the encoder
+			self.model.mention_proposer.doc_encoder.lm_encoder.save_pretrained(
+				save_directory=doc_encoder_dir, save_config=True)
+			# Save the tokenizer
+			self.model.mention_proposer.doc_encoder.tokenizer.save_pretrained(doc_encoder_dir)
 
 		save_dict = {
 			'train_info': self.train_info,
@@ -558,5 +584,8 @@ class Experiment:
 				save_dict['optimizer'][param_group] = self.optimizer[param_group].state_dict()
 				save_dict['scheduler'][param_group] = self.optim_scheduler[param_group].state_dict()
 
+		print(save_dict.keys())
 		torch.save(save_dict, location)
 		logging.info(f"Model saved at: {location}")
+
+

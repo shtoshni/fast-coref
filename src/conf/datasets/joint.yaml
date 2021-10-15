@@ -3,5 +3,3 @@ defaults:
   - ontonotes
   - preco
 
-#ontonotes:
-#  - ontonotes/num_train_docs: 500

@@ -1,9 +1,12 @@
 import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast
+from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
 import torch
 
 from omegaconf import DictConfig
 from typing import Dict
+import transformers
+
+transformers.logging.set_verbosity_error()
 
 
 class BaseDocEncoder(nn.Module):
@@ -21,11 +24,11 @@ class BaseDocEncoder(nn.Module):
 
         model_str: str = config.transformer.model_str
 
-        self.lm_encoder: nn.Module = AutoModel.from_pretrained(
+        self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
             model_str, output_hidden_states=False,
             gradient_checkpointing=gradient_checkpointing)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_str, use_fast=True)
+        self.tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(model_str, use_fast=True)
         if config.add_speaker_tokens:
             self.tokenizer.add_special_tokens({
                 'additional_special_tokens': [config.speaker_start, config.speaker_end]

@@ -14,11 +14,13 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 @hydra.main(config_path="conf", config_name="config")
 def main(cfg):
-	masked_copy = OmegaConf.masked_copy(cfg, ['dataset', 'model', 'trainer', 'optimizer'])
+	masked_copy = OmegaConf.masked_copy(cfg, ['datasets', 'model', 'trainer', 'optimizer'])
+	print(masked_copy)
 	encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
-	hashlib.md5().update(encoded)
+	hash_obj = hashlib.md5()
+	hash_obj.update(encoded)
 
-	model_name = str(hashlib.md5().hexdigest())
+	model_name = str(hash_obj.hexdigest())
 	cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, cfg.paths.model_name_prefix + model_name)
 	cfg.paths.best_model_dir = path.join(cfg.paths.model_dir, 'best')
 

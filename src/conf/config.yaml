@@ -27,4 +27,5 @@ paths:
   model_name_prefix: 'coref_'
   model_path: null
   best_model_path: null
+  doc_encoder_dirname: 'doc_encoder'
 

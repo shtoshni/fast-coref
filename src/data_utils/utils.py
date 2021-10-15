@@ -17,7 +17,7 @@ def get_data_file(data_dir: str, split: str, max_segment_len: int) -> str:
 
 def load_dataset(
 				data_dir: str, singleton_file: str = None, max_segment_len: int = 2048,
-				num_train_docs: int = None, num_eval_docs: int = None, num_test_docs: int = None) -> Dict:
+				num_train_docs: int = None, num_dev_docs: int = None, num_test_docs: int = None) -> Dict:
 	all_splits = []
 	for split in ["train", "dev", "test"]:
 		jsonl_file = get_data_file(data_dir, split, max_segment_len)
@@ -42,7 +42,7 @@ def load_dataset(
 
 		print("Added %d singletons" % num_singletons)
 
-	return {"train": train_data[:num_train_docs], "dev": dev_data[:num_eval_docs],
+	return {"train": train_data[:num_train_docs], "dev": dev_data[:num_dev_docs],
 	        "test": test_data[:num_test_docs]}
 
 

@@ -280,4 +280,4 @@ class EntityRankingModel(nn.Module):
 			action_list.extend(cur_action_list)
 
 		gt_actions = get_gt_actions(pred_mentions_list, document)
-		return action_list, pred_mentions_list, gt_actions, mention_scores
+		return pred_mentions_list,  mention_scores, gt_actions, action_list
