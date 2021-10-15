@@ -23,7 +23,22 @@ logger = logging.getLogger()
 def full_coref_evaluation(
 				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict, dataset: str,
 				split='dev', final_eval=False, conll_data_dir: Dict = None) -> Dict:
-	"""Full coreference evaluation."""
+	"""Function to evaluate full coreference chains.
+
+	Args:
+		config: Experiment configuration
+		model: Coreference model
+		data_iter_map: Data iterator
+		dataset: Name of the coreference dataset
+		split: Partition of the dataset - train/dev/test
+		final_eval: Whether this is a periodic evaluation or final evaluation
+			For final evaluation, official CoNLL scores can be calculated if possible.
+		conll_data_dir:  Data directory dictionary which maps datasets to their gold CoNLL files.
+
+	Returns:
+		dict: Dictionary with results for all the metrics.
+	"""
+
 	# Measure time
 	inference_time = 0.0
 
@@ -147,6 +162,13 @@ def full_coref_evaluation(
 def targeted_coref_evaluation(
 				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict,
 				dataset: str, split="test") -> Dict:
+	"""Function to perform targeted coreference evaluation for datasets such as GAP.
+
+	Datasets such as GAP and WSC only provide annotation for specific coreference pairs.
+	Due to this we need to use a separate evaluation function.
+	The vanilla F-score is used as the evaluation metric.
+	"""
+
 	# Set up logging paths
 	log_dir = path.join(config.paths.model_dir, dataset)
 	if not path.exists(log_dir):
@@ -170,7 +192,7 @@ def targeted_coref_evaluation(
 			predicted_clusters, mention_to_predicted = \
 				get_mention_to_cluster(predicted_clusters, threshold=1)
 			pron_span = tuple(document['pronoun_span'])
-			a_pred, b_pred = False, False
+			a_pred, b_pred = False, False  # Default prediction is assumed to be False
 
 			if pron_span in mention_to_predicted:
 				pron_cluster = mention_to_predicted[pron_span]
@@ -178,10 +200,8 @@ def targeted_coref_evaluation(
 					a_aligned = is_aligned(span, tuple(document['a_span']))
 					b_aligned = is_aligned(span, tuple(document['b_span']))
 
-					if a_aligned:
-						a_pred = True
-					if b_aligned:
-						b_pred = True
+					if a_aligned: a_pred = True
+					if b_aligned: b_pred = True
 
 			if dataset == 'wsc':
 				span_not_found = False
@@ -197,6 +217,7 @@ def targeted_coref_evaluation(
 				log_example["correct"] = corr
 				counter['corr'] += ((a_pred == document['a_label']) and (b_pred == document['b_label']))
 				counter['total'] += 1
+
 			elif dataset == 'gap':
 				for gt, pred in zip([document['a_label'], document['b_label']], [a_pred, b_pred]):
 					if gt and pred:
@@ -208,11 +229,12 @@ def targeted_coref_evaluation(
 					else:
 						counter['false_positive'] += 1
 
+			else:
+				raise ValueError(f"Dataset {dataset} evaluation is currently not supported")
+
 			log_example["a_pred"] = a_pred
 			log_example["b_pred"] = b_pred
-
 			log_example["predicted_clusters"] = predicted_clusters
-
 			f.write(json.dumps(log_example) + "\n")
 
 	logger.info(log_file)
@@ -239,6 +261,8 @@ def targeted_coref_evaluation(
 def coref_evaluation(
 				config: DictConfig, model: EntityRankingModel, data_iter_map: Dict, dataset: str, split='dev',
 				final_eval=False, conll_data_dir: Dict = None) -> Dict:
+	"""Evaluation function which calls the dataset-appropriate coreference evaluation function."""
+
 	dataset_config = config.datasets[dataset]
 	if dataset_config.get('targeted_eval', False):
 		return targeted_coref_evaluation(config, model, data_iter_map, dataset, split=split)

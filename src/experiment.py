@@ -20,7 +20,7 @@ from pytorch_utils.optimization_utils import get_inverse_square_root_decay
 
 from utils_evaluate import coref_evaluation
 
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Union, List, Optional
 from omegaconf import DictConfig
 
 
@@ -29,6 +29,8 @@ logger = logging.getLogger()
 
 
 class Experiment:
+	"""Class for training and evaluating coreference models."""
+
 	def __init__(self, config: DictConfig):
 		self.config = config
 
@@ -64,6 +66,8 @@ class Experiment:
 		self.perform_final_eval()
 
 	def _build_model(self) -> None:
+		"""Constructs the model with given config."""
+
 		model_params: DictConfig = self.config.model
 		train_config: DictConfig = self.config.trainer
 		self.model = EntityRankingModel(model_config=model_params,  train_config=train_config)
@@ -71,8 +75,22 @@ class Experiment:
 			self.model.cuda()
 
 	def _load_data(self):
-		self.orig_data_map, self.num_train_docs_map, self.data_iter_map = {}, {}, {}
-		self.conll_data_dir = {}
+		"""Loads and processes the training and evaluation data.
+
+		Loads the data concerning all the specified datasets for training and eval.
+		The first part of this method loads all the data from the preprocessed jsonline files.
+		In the second half, the loaded data is tensorized for consumption by the model.
+
+		Apart from loading and processing the data, the method also populates important
+		attributes such as:
+			num_train_docs_map (dict): Dictionary to maintain the number of training
+				docs per dataset which is useful for implementing sampling in joint training.
+			num_training_steps (int): Number of total training steps.
+			eval_per_k_steps (int): Number of gradient updates before each evaluation.
+		"""
+
+		self.num_train_docs_map, self.data_iter_map, self.conll_data_dir = {}, {}, {}
+		raw_data_map = {}
 
 		max_segment_len: int = self.config.model.doc_encoder.transformer.max_segment_len
 		model_name: str = self.config.model.doc_encoder.transformer.name
@@ -114,13 +132,13 @@ class Experiment:
 					self.conll_data_dir[dataset_name] = conll_dir
 
 			if self.eval_model:
-				self.orig_data_map[dataset_name] = load_eval_dataset(
+				raw_data_map[dataset_name] = load_eval_dataset(
 					data_dir, max_segment_len=max_segment_len,
 					num_test_docs=num_test_docs
 				)
 			else:
-				self.num_train_docs_map[dataset_name] = attributes.get('num_train_docs', None)
-				self.orig_data_map[dataset_name] = load_dataset(
+				self.num_train_docs_map[dataset_name] = num_train_docs
+				raw_data_map[dataset_name] = load_dataset(
 					data_dir, singleton_file=singleton_file,
 					num_train_docs=num_train_docs, num_eval_docs=num_eval_docs,
 					num_test_docs=num_test_docs,
@@ -132,17 +150,17 @@ class Experiment:
 
 		if self.eval_model:
 			self.data_iter_map['test'] = {}
-			for dataset in self.orig_data_map:
+			for dataset in raw_data_map:
 				self.data_iter_map['test'][dataset] = \
-					data_processor.tensorize_data(self.orig_data_map[dataset]['test'])
+					data_processor.tensorize_data(raw_data_map[dataset]['test'])
 		else:
 			# Training
 			for split in ['train', 'dev', 'test']:
 				self.data_iter_map[split] = {}
 				training = (split == 'train')
-				for dataset in self.orig_data_map:
+				for dataset in raw_data_map:
 					self.data_iter_map[split][dataset] = \
-						data_processor.tensorize_data(self.orig_data_map[dataset][split], training=training)
+						data_processor.tensorize_data(raw_data_map[dataset][split], training=training)
 
 			# Estimate number of training steps
 			if self.config.trainer.eval_per_k_steps is None:
@@ -153,6 +171,14 @@ class Experiment:
 			logger.info(f"Number of training steps: {self.config.trainer.num_training_steps}")
 
 	def _load_previous_checkpoint(self, last_checkpoint=True):
+		"""Loads the last checkpoint or best checkpoint.
+
+		Args:
+			last_checkpoint: If true, load the last checkpoint to resume training.
+				Otherwise, load the best model for evaluation.
+				If the above two models don't exist, set the random seeds for training initialization.
+		"""
+
 		conf_paths = self.config.paths
 
 		if (self.config.paths.model_path is None) or (not path.exists(self.config.paths.model_path)):
@@ -184,6 +210,16 @@ class Experiment:
 			sys.stdout.flush()
 
 	def _is_training_remaining(self):
+		"""Check if training is done or remaining.
+
+		There are two cases where we don't resume training:
+		(a) The dev performance has not improved for the allowed patience parameter.
+		(b) Number of gradient updates is already >= Total training steps.
+
+		Returns:
+			bool: If true, we resume training. Otherwise do final evaluation.
+		"""
+
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
 		if self.train_info['global_steps'] >= self.config.trainer.num_training_steps:
@@ -192,6 +228,8 @@ class Experiment:
 		return True
 
 	def _setup_training(self):
+		"""Initialize optimizer and bookkeeping variables for training. """
+
 		# Dictionary to track key training variables
 		self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0, 'peak_memory': 0.0}
 
@@ -245,8 +283,12 @@ class Experiment:
 					self.optimizer['doc'], num_warmup_steps=num_warmup_steps,
 					num_training_steps=train_config.num_training_steps)
 
-	def train(self):
-		"""Train model"""
+	def train(self) -> None:
+		"""Method for training the model.
+
+		This method implements the training loop.
+		Within the training loop, the model is periodically evaluated on the dev set(s).
+		"""
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 		model.train()
 
@@ -257,26 +299,31 @@ class Experiment:
 		while True:
 			logger.info("Steps done %d" % (self.train_info['global_steps']))
 
+			# Shuffle and load the training data
 			train_data = []
 			for dataset, dataset_train_data in self.data_iter_map['train'].items():
 				np.random.shuffle(dataset_train_data)
 				if self.num_train_docs_map.get(dataset, None) is not None:
+					# Subsampling the data - This is useful in joint training
 					train_data += dataset_train_data[:self.num_train_docs_map[dataset]]
 				else:
 					train_data += dataset_train_data
+
+			# Shuffle the concatenated examples again
 			np.random.shuffle(train_data)
 			logger.info("Per epoch training steps: %d" % len(train_data))
 			encoder_params, task_params = model.get_params()
 
-			for cur_example in train_data:
-				def handle_example(example):
+			# Training "epoch" -> May not correspond to actual epoch
+			for cur_document in train_data:
+				def handle_example(document: Dict) -> Union[None, float]:
 					self.train_info['global_steps'] += 1
 					for key in optimizer:
 						optimizer[key].zero_grad()
 
 					if scaler is not None:
 						with torch.cuda.amp.autocast():
-							loss = model.forward_training(example)
+							loss = model.forward_training(document)
 							total_loss = loss['total']
 							if total_loss is None:
 								return None
@@ -285,7 +332,7 @@ class Experiment:
 							for key in optimizer:
 								scaler.unscale_(optimizer[key])
 					else:
-						loss = model.forward_training(example)
+						loss = model.forward_training(document)
 						total_loss = loss['total']
 						if total_loss is None:
 							return None
@@ -310,11 +357,11 @@ class Experiment:
 
 					return total_loss.item()
 
-				example_loss = handle_example(cur_example)
+				loss = handle_example(cur_document)
 
 				if self.train_info['global_steps'] % train_config.log_frequency == 0:
 					logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
-						cur_example["doc_key"], example_loss,
+						cur_document["doc_key"], loss,
 						(torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
 					)
 					torch.cuda.reset_peak_memory_stats()
@@ -331,13 +378,11 @@ class Experiment:
 						% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
 
 					# Check stopping criteria
-					if self.train_info['num_stuck_evals'] >= train_config.patience:
-						return
-					if self.train_info['global_steps'] >= train_config.num_training_steps:
-						return
+					if not self._is_training_remaining():
+						break
 
+					# Check if there's enough time on cluster to run another training loop
 					if not self.config.infra.is_local:
-						# Check if enough time on cluster to run another eval
 						eval_time['total_time'] += elapsed_time
 						eval_time['num_evals'] += 1
 
@@ -354,6 +399,12 @@ class Experiment:
 
 	@torch.no_grad()
 	def periodic_model_eval(self) -> float:
+		"""Method for evaluating and saving the model during the training loop.
+
+		Returns:
+			float: Average CoNLL F-score over all the development sets of datasets.
+		"""
+
 		self.model.eval()
 		# Dev performance
 		fscore_dict = {}
@@ -366,10 +417,14 @@ class Experiment:
 		# Calculate Mean F-score
 		fscore = sum([fscore_dict[dataset] for dataset in fscore_dict]) / len(fscore_dict)
 		logger.info('F1: %.1f, Max F1: %.1f' % (fscore, self.train_info['val_perf']))
+
 		# Update model if dev performance improves
 		if fscore > self.train_info['val_perf']:
+			# Update training bookkeeping variables
 			self.train_info['num_stuck_evals'] = 0
 			self.train_info['val_perf'] = fscore
+
+			# Save the best model
 			logger.info('Saving best model')
 			self.save_model(self.best_model_path, last_checkpoint=False)
 		else:
@@ -377,15 +432,16 @@ class Experiment:
 
 		# Save model
 		if self.config.trainer.to_save_model:
-			self.save_model(self.model_path)
+			self.save_model(self.model_path, last_checkpoint=True)
 
 		# Go back to training mode
 		self.model.train()
 		return fscore
 
 	@torch.no_grad()
-	def perform_final_eval(self):
-		"""Evaluate the model on train, dev, and test"""
+	def perform_final_eval(self) -> None:
+		"""Method to evaluate the model after training has finished."""
+
 		self.model.eval()
 		base_output_dict = dict(self.config)
 		perf_summary = {
@@ -402,8 +458,7 @@ class Experiment:
 					os.makedirs(dataset_dir)
 				perf_file = path.join(dataset_dir, "perf.json")
 
-				logger.info('\n')
-				logger.info('%s\n' % self.config.datasets[dataset].name)
+				logger.info('\n%s\n' % self.config.datasets[dataset].name)
 
 				result_dict = coref_evaluation(
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
@@ -437,6 +492,16 @@ class Experiment:
 		logger.info("Performance summary file: %s" % summary_file)
 
 	def load_model(self, location: str, last_checkpoint=True) -> None:
+		"""Load model from given location.
+
+		Args:
+			location: str
+				Location of checkpoint
+			last_checkpoint: bool
+				Whether the checkpoint is the last one saved or not.
+				If false, don't load optimizers, schedulers, and other training variables.
+		"""
+
 		checkpoint = torch.load(location, map_location='cpu')
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 
@@ -451,13 +516,21 @@ class Experiment:
 			if 'scaler' in checkpoint and self.scaler is not None:
 				self.scaler.load_state_dict(checkpoint['scaler'])
 
-		if last_checkpoint:
 			self.train_info = checkpoint['train_info']
 			torch.set_rng_state(checkpoint['rng_state'])
 			np.random.set_state(checkpoint['np_rng_state'])
 
 	def save_model(self, location: str, last_checkpoint=True) -> None:
-		"""Save model"""
+		"""Save model.
+
+		Args:
+			location: str
+				Location of checkpoint
+			last_checkpoint: bool
+				Whether the checkpoint is the last one saved or not.
+				If false, don't save optimizers and schedulers which take up a lot of space.
+		"""
+
 		model_state_dict = OrderedDict(self.model.state_dict())
 		if not self.config.model.doc_encoder.finetune:
 			for key in self.model.state_dict():

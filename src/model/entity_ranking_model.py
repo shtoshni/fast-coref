@@ -159,10 +159,13 @@ class EntityRankingModel(nn.Module):
 		return loss_dict
 
 	def forward(self, document: Dict) -> Tuple[List, List, List, List]:
-		'''
-		Process document chunk by chunk.
-		Pass along the previous clusters
-		'''
+		"""Perform streaming corefence for document chunk-by-chunk.
+
+		This method performs streaming coreference. The entity clusters from previous
+		documents chunks are represented as vectors and passed along to the processing
+		of subsequent chunks along with the metadata associated with these clusters.
+		'"""
+
 		# Initialize lists to track all the actions taken, mentions predicted across the chunks
 		action_list, pred_mentions_list, gt_actions, mention_scores = [], [], [], []
 		# Initialize entity clusters and current document token offset
