@@ -8,69 +8,22 @@ from coref_utils import conll
 from os import path
 from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, normalize_word, \
 	BaseDocumentState
+from data_processing.process_ontonotes import OntoNotesDocumentState
 
 
-class DocumentState(BaseDocumentState):
+class DocumentState(OntoNotesDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
-
-	def finalize(self):
 		self.clusters = collections.defaultdict(list)
 
-		# populate clusters
-		first_subtoken_index = -1
-		for seg_idx, segment in enumerate(self.segment_info):
-			for i, tok_info in enumerate(segment):
-				first_subtoken_index += 1
-				coref = tok_info[-2] if tok_info is not None else '-'
-				if coref != "-":
-					last_subtoken_index = first_subtoken_index + \
-					                      tok_info[-1] - 1
-					for part in coref.split("|"):
-						if part[0] == "(":
-							if part[-1] == ")":
-								cluster_id = int(part[1:-1])
-								self.clusters[cluster_id].append(
-									(first_subtoken_index, last_subtoken_index))
-							else:
-								cluster_id = int(part[1:])
-								self.coref_stacks[cluster_id].append(
-									first_subtoken_index)
-						else:
-							cluster_id = int(part[:-1])
-							start = self.coref_stacks[cluster_id].pop()
-							self.clusters[cluster_id].append(
-								(start, last_subtoken_index))
-		# merge clusters
-		merged_clusters = []
-		for c1 in self.clusters.values():
-			existing = None
-			for m in c1:
-				for c2 in merged_clusters:
-					if m in c2:
-						existing = c2
-						break
-				if existing is not None:
-					break
-			if existing is not None:
-				print("Merging clusters (shouldn't happen very often.)")
-				existing.update(c1)
-			else:
-				merged_clusters.append(set(c1))
-		merged_clusters = [list(c) for c in merged_clusters]
-		all_mentions = flatten(merged_clusters)
-		sentence_map = get_sentence_map(self.segments, self.sentence_end)
-		subtoken_map = flatten(self.segment_subtoken_map)
-		assert len(all_mentions) == len(set(all_mentions))
-		num_words = len(flatten(self.segments))
-		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
-		assert num_words == len(sentence_map), (num_words, len(sentence_map))
+	def finalize(self):
+		self.final_processing()
 		return {
 			"doc_key": self.doc_key,
 			"sentences": self.segments,
-			"clusters": merged_clusters,
-			'sentence_map': sentence_map,
-			"subtoken_map": subtoken_map,
+			"clusters": self.merged_clusters,
+			'sentence_map': self.sentence_map,
+			"subtoken_map": self.subtoken_map,
 		}
 
 

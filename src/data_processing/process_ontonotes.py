@@ -5,17 +5,17 @@ import json
 
 from coref_utils import conll
 from os import path
-from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
+from data_processing.constants import SPEAKER_START, SPEAKER_END
 from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, normalize_word, \
 	BaseDocumentState
 
 
-class DocumentState(BaseDocumentState):
+class OntoNotesDocumentState(BaseDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
 		self.clusters = collections.defaultdict(list)
 
-	def finalize(self):
+	def final_processing(self):
 		# populate clusters
 		first_subtoken_index = -1
 		for seg_idx, segment in enumerate(self.segment_info):
@@ -56,21 +56,24 @@ class DocumentState(BaseDocumentState):
 				existing.update(c1)
 			else:
 				merged_clusters.append(set(c1))
-		merged_clusters = [list(c) for c in merged_clusters]
+		self.merged_clusters = [list(c) for c in merged_clusters]
 		all_mentions = flatten(merged_clusters)
-		sentence_map = get_sentence_map(self.segments, self.sentence_end)
-		subtoken_map = flatten(self.segment_subtoken_map)
+		self.sentence_map = get_sentence_map(self.segments, self.sentence_end)
+		self.subtoken_map = flatten(self.segment_subtoken_map)
 		assert len(all_mentions) == len(set(all_mentions))
 		num_words = len(flatten(self.segments))
 		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
 		assert num_words == len(sentence_map), (num_words, len(sentence_map))
 		assert num_words == len(self.orig_subtoken_map), (num_words, len(self.orig_subtoken_map))
+
+	def finalize(self):
+		self.final_processing()
 		return {
 			"doc_key": self.doc_key,
 			"sentences": self.segments,
-			"clusters": merged_clusters,
-			'sentence_map': sentence_map,
-			"subtoken_map": subtoken_map,
+			"clusters": self.merged_clusters,
+			'sentence_map': self.sentence_map,
+			"subtoken_map": self.subtoken_map,
 			"orig_subtoken_map": self.orig_subtoken_map,
 			"orig_tokens": self.tokens,
 		}

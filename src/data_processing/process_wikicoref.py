@@ -4,30 +4,23 @@ import json
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from os import path
-from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, BaseDocumentState
+from data_processing.utils import split_into_segments, parse_args
+from data_processing.process_preco import PrecoDocumentState
 
 
-class DocumentState(BaseDocumentState):
+class DocumentState(PrecoDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
 
 	def finalize(self):
-		all_mentions = flatten(self.clusters)
-		# print(all_mentions)
-		sentence_map = get_sentence_map(self.segments, self.sentence_end)
-		subtoken_map = flatten(self.segment_subtoken_map)
-		# print(len(all_mentions), len(set(all_mentions)))
-		assert len(all_mentions) == len(set(all_mentions))
-		num_words = len(flatten(self.segments))
-		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
-		assert num_words == len(sentence_map), (num_words, len(sentence_map))
+		self.final_process()
 		return {
 			"doc_key": self.doc_key,
 			"sentences": self.segments,
 			"str_doc": self.tokens,
 			"clusters": self.clusters,
-			'sentence_map': sentence_map,
-			"subtoken_map": subtoken_map,
+			'sentence_map': self.sentence_map,
+			"subtoken_map": self.subtoken_map,
 		}
 
 

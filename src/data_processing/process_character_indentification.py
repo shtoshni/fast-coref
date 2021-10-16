@@ -2,30 +2,26 @@ import json
 from collections import defaultdict
 
 from os import path
-from auto_memory_model.constants import SPEAKER_START, SPEAKER_END
-from data_processing.utils import flatten, get_sentence_map, split_into_segments, parse_args, BaseDocumentState
+from data_processing.constants import SPEAKER_START, SPEAKER_END
+from data_processing.utils import split_into_segments, parse_args
+from data_processing.process_preco import PrecoDocumentState
+from data_processing.process_ontonotes import minimize_split
 
 
-class DocumentState(BaseDocumentState):
+class DocumentState(PrecoDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
 
 	def finalize(self):
-		all_mentions = flatten(self.clusters)
-		sentence_map = get_sentence_map(self.segments, self.sentence_end)
-		subtoken_map = flatten(self.segment_subtoken_map)
-		assert len(all_mentions) == len(set(all_mentions))
-		num_words = len(flatten(self.segments))
-		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
-		assert num_words == len(sentence_map), (num_words, len(sentence_map))
+		self.final_process()
 		return {
 			"doc_key": self.doc_key,
 			"tokens": self.tokens,
 			"cluster_str": self.cluster_str,
 			"sentences": self.segments,
 			"clusters": self.clusters,
-			'sentence_map': sentence_map,
-			"subtoken_map": subtoken_map,
+			'sentence_map': self.sentence_map,
+			"subtoken_map": self.subtoken_map,
 		}
 
 
@@ -128,17 +124,6 @@ def minimize_partition(split, args):
 				count += 1
 
 		print("Wrote {} documents to {}".format(count, output_path))
-
-
-def minimize_split(args):
-	tokenizer = args.tokenizer
-	if args.add_speaker:
-		tokenizer.add_special_tokens({
-			'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
-		})
-
-	for split in ["dev", "test", "train"]:
-		minimize_partition(split, args)
 
 
 if __name__ == "__main__":

@@ -4,24 +4,27 @@ from os import path
 from data_processing.utils import split_into_segments, flatten, get_sentence_map, parse_args, BaseDocumentState
 
 
-class DocumentState(BaseDocumentState):
+class PrecoDocumentState(BaseDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
 
-	def finalize(self):
+	def final_process(self):
 		all_mentions = flatten(self.clusters)
-		sentence_map = get_sentence_map(self.segments, self.sentence_end)
-		subtoken_map = flatten(self.segment_subtoken_map)
+		self.sentence_map = get_sentence_map(self.segments, self.sentence_end)
+		self.subtoken_map = flatten(self.segment_subtoken_map)
 		assert len(all_mentions) == len(set(all_mentions))
 		num_words = len(flatten(self.segments))
-		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
-		assert num_words == len(sentence_map), (num_words, len(sentence_map))
+		assert num_words == len(self.subtoken_map), (num_words, len(self.subtoken_map))
+		assert num_words == len(self.sentence_map), (num_words, len(self.sentence_map))
+
+	def finalize(self):
+		self.final_process()
 		return {
 			"doc_key": self.doc_key,
 			"sentences": self.segments,
 			"clusters": self.clusters,
-			'sentence_map': sentence_map,
-			"subtoken_map": subtoken_map,
+			'sentence_map': self.sentence_map,
+			"subtoken_map": self.subtoken_map,
 		}
 
 

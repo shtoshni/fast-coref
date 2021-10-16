@@ -21,6 +21,7 @@ class BaseDocumentState:
 		self.sentence_map = []
 		self.pronouns = []
 		self.clusters = []
+		self.merged_clusters = []
 		self.coref_stacks = collections.defaultdict(list)
 		self.segment_info = []
 		self.speakers = []

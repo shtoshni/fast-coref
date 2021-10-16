@@ -4,7 +4,7 @@ from os import path
 from data_processing.utils import flatten, BaseDocumentState, parse_args
 
 
-class DocumentState(BaseDocumentState):
+class GAPDocumentState(BaseDocumentState):
 	def __init__(self, key):
 		super().__init__(key)
 
@@ -60,7 +60,7 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
 				first_line = False
 				continue
 			doc_key, text, pronoun, pronoun_offset, span1, span1_offset, coref1, \
-			span2, span2_offset, coref2 = line.strip().split('\t')[:10]
+				span2, span2_offset, coref2 = line.strip().split('\t')[:10]
 
 			pronoun_offset, span1_offset, span2_offset = int(pronoun_offset), int(span1_offset), int(span2_offset)
 			pronoun_boundary = (pronoun_offset, pronoun_offset + len(pronoun), 'pronoun', None)
@@ -94,7 +94,7 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
 				label_to_span[label] = tokenized_boundary
 				label_to_coref_label[label] = coref_label
 
-			document = DocumentState(doc_key.strip())
+			document = GAPDocumentState(doc_key.strip())
 			document.tokens = tokenizer.convert_ids_to_tokens(doc_token_list)
 			# print(document.tokens)
 			# print(text)

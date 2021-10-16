@@ -3,54 +3,10 @@ import json
 import numpy as np
 
 from os import path
-from data_processing.utils import flatten, BaseDocumentState, parse_args
+from data_processing.utils import parse_args
+from data_processing.process_gap import GAPDocumentState, search_span
 
 TOTAL_INSTANCES = 273
-
-
-class DocumentState(BaseDocumentState):
-	def __init__(self, key):
-		super().__init__(key)
-
-		self.pronoun_span = []
-		self.a_span = []
-		self.b_span = []
-		self.a_label = 0
-		self.b_label = 0
-
-	def finalize(self):
-		# print(all_mentions)
-		num_words = len(flatten(self.segments))
-		sentence_map = [0] * num_words
-		assert num_words == len(self.subtoken_map), (num_words, len(self.subtoken_map))
-		return {
-			"doc_key": self.doc_key,
-			"sentences": self.segments,
-			"str_doc": self.tokens,
-			'sentence_map': sentence_map,
-			"subtoken_map": self.subtoken_map,
-			"pronoun_span": self.pronoun_span,
-			"a_span": self.a_span,
-			"b_span": self.b_span,
-			"a_label": self.a_label,
-			"b_label": self.b_label,
-		}
-
-
-def search_span(word_list, token_list):
-	for start_idx in range(0, len(word_list) - len(token_list) + 1):
-		match = start_idx
-		for token1, token2 in zip(word_list[start_idx: start_idx + len(token_list)], token_list):
-			if token1 != token2:
-				match = -1
-				break
-
-		if match == -1:
-			continue
-		else:
-			return match
-
-	return -1
 
 
 def minimize_split(args, split="test"):
@@ -120,7 +76,7 @@ def minimize_split(args, split="test"):
 					not_found_count += 1
 
 			if len(answer_boundaries) == 2:
-				document = DocumentState(f'wsc_{idx}')
+				document = GAPDocumentState(f'wsc_{idx}')
 				num_tokens_list.append(len(text.split()))
 
 				ment_len_list.extend([1, len(answer1.split()), len(answer2.split())])
