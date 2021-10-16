@@ -420,9 +420,10 @@ class Experiment:
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			for key in result_dict:
 				# Log result for individual metrics
-				wandb.log(
-					{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-					 "batch": self.train_info['global_steps']})
+				if isinstance(result_dict[key], dict):
+					wandb.log(
+						{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
+						 "batch": self.train_info['global_steps']})
 
 			# Log the overall F-score
 			wandb.log(
