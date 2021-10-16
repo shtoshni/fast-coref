@@ -9,6 +9,8 @@ from torch import Tensor
 
 
 class EntityMemory(BaseMemory):
+	"""Module for clustering proposed mention spans using Entity-Ranking paradigm."""
+
 	def __init__(self, config: DictConfig, span_emb_size: int, drop_module: nn.Module) -> None:
 		super(EntityMemory, self).__init__(config, span_emb_size, drop_module)
 		self.mem_type: DictConfig = config.mem_type
@@ -24,6 +26,13 @@ class EntityMemory(BaseMemory):
 	def predict_new_or_ignore_learned(
 					self, ment_emb: Tensor, mem_vectors: Tensor,
 					feature_embs: Tensor, ment_feature_embs: Tensor) -> Tuple[Tensor, int, str]:
+		"""
+		Predict whether a new entity is tracked or ignored.
+
+		The key idea of this method is to predict fertility scores for different entity clusters
+		and the current mention. The fertility score is supposed to reflect the number of
+		remaining entities of a given entity cluster.
+		"""
 		# Fertility Score
 		mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
 		ment_fert_input = torch.unsqueeze(torch.cat([ment_emb, ment_feature_embs], dim=-1), dim=0)
@@ -35,7 +44,7 @@ class EntityMemory(BaseMemory):
 		min_idx = int(torch.argmin(fert_scores).item())
 		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
 		if min_idx < max_ents:
-			# The fertility of one of the entities currently being tracked is lower than the new entity
+			# The fertility of one of the entities currently being tracked is lower than the new entity.
 			# We will overwrite this entity
 			output = (fert_scores, min_idx, 'o',)
 		else:
@@ -47,6 +56,13 @@ class EntityMemory(BaseMemory):
 	def predict_new_or_ignore_lru(
 					self, ment_emb: Tensor, mem_vectors: Tensor, feature_embs: Tensor,
 					ment_feature_embs: Tensor, lru_list: List[int]) -> Tuple[Tensor, int, str]:
+		"""
+		Predict whether the new entity is tracked or ignored in the LRU scheme.
+
+		The idea is to compare the fertility scores for the least recently seen entity cluster
+		and the current entity cluster. The fertility scores are supposed to be ordered
+		according to the number of mentions remaining in the entity cluster.
+		"""
 		lru_cell = lru_list[0]
 		mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
 		ment_fert_input = torch.cat([ment_emb, ment_feature_embs], dim=-1)
@@ -54,7 +70,7 @@ class EntityMemory(BaseMemory):
 		fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
 		output = fert_scores,
 
-		over_max_idx = torch.argmax(fert_scores).item()
+		over_max_idx = torch.argmin(fert_scores).item()
 		if over_max_idx == 0:
 			return output + (lru_cell, 'o',)
 		else:
@@ -63,6 +79,18 @@ class EntityMemory(BaseMemory):
 
 	def forward_training(self, ment_boundaries: List[List[Tensor]], mention_emb_list: List[Tensor],
 	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> List[Tensor]:
+		"""
+		Forward pass during coreference model training where we use teacher-forcing.
+
+		Args:
+			ment_boundaries: Mention boundaries of proposed mentions
+			mention_emb_list: Embedding list of proposed mentions
+			gt_actions: Ground truth clustering actions
+			metadata: Metadata such as document genre
+
+		Returns:
+			coref_new_list: Logit scores for ground truth actions.
+		"""
 		# Initialize memory
 		first_overwrite, coref_new_list = True, []
 		mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
@@ -108,15 +136,30 @@ class EntityMemory(BaseMemory):
 	def forward(
 					self, ment_boundaries: List[List[Tensor]], mention_emb_list: Tensor, metadata: Dict,
 					memory_init: Dict = None) -> Tuple[List[Tuple[int, str]], Dict]:
+		"""Forward pass for clustering entity mentions during inference/evaluation.
+
+		Args:
+		 ment_boundaries: Start and end token indices for the proposed mentions.
+		 mention_emb_list: Embedding list of proposed mentions
+		 metadata: Metadata features such as document genre embedding
+		 memory_init: Initializer for memory. For streaming coreference, we can pass the previous
+ 			  memory state via this dictionary
+
+		Returns:
+			pred_actions: List of predicted clustering actions.
+			mem_state: Current memory state.
+		"""
+
 		# Initialize memory
 		if memory_init is not None:
 			mem_vectors, ent_counter, last_mention_start = self.initialize_memory(**memory_init)
 		else:
 			mem_vectors, ent_counter, last_mention_start = self.initialize_memory()
 
-		action_list = []  # argmax actions
+		pred_actions = []  # argmax actions
 
 		# Boolean to track if we have started tracking any entities
+		# This value can be false if we are processing subsequent chunks of a long document
 		first_overwrite: bool = (True if torch.sum(ent_counter) == 0 else False)
 
 		for ment_idx, ment_emb in enumerate(mention_emb_list):
@@ -124,15 +167,15 @@ class EntityMemory(BaseMemory):
 			feature_embs = self.get_feature_embs(ment_start, last_mention_start, ent_counter, metadata)
 
 			if first_overwrite:
+				# First mention is always an overwrite
 				pred_cell_idx, pred_action_str = 0, 'o'
 			else:
+				# Predict whether the mention is coreferent with existing clusters or a new cluster
 				coref_new_scores = self.get_coref_new_scores(
 					ment_emb, mem_vectors, ent_counter, feature_embs)
-
 				pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores)
 
-			action_list.append((pred_cell_idx, pred_action_str))
-			action_str, cell_idx = pred_action_str, pred_cell_idx
+			pred_actions.append((pred_cell_idx, pred_action_str))
 
 			if first_overwrite:
 				first_overwrite = False
@@ -141,14 +184,15 @@ class EntityMemory(BaseMemory):
 				ent_counter = torch.tensor([1.0], device=self.device)
 				last_mention_start[0] = ment_start
 			else:
-				if action_str == 'c':
-					coref_vec = self.coref_update(ment_emb, mem_vectors, cell_idx, ent_counter)
-					mem_vectors[cell_idx] = coref_vec
-					ent_counter[cell_idx] = ent_counter[cell_idx] + 1
-					last_mention_start[cell_idx] = ment_start
+				if pred_action_str == 'c':
+					# Perform coreference update on the cluster referenced by pred_cell_idx
+					coref_vec = self.coref_update(ment_emb, mem_vectors, pred_cell_idx, ent_counter)
+					mem_vectors[pred_cell_idx] = coref_vec
+					ent_counter[pred_cell_idx] = ent_counter[pred_cell_idx] + 1
+					last_mention_start[pred_cell_idx] = ment_start
 
-				elif action_str == 'o':
-					# Append the new entity
+				elif pred_action_str == 'o':
+					# Append the new entity to the entity cluster array
 					mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
 					ent_counter = torch.cat([ent_counter, torch.tensor([1.0], device=self.device)], dim=0)
 					last_mention_start = torch.cat(
@@ -156,4 +200,4 @@ class EntityMemory(BaseMemory):
 
 		mem_state = {
 			"mem": mem_vectors, "ent_counter": ent_counter, "last_mention_start": last_mention_start}
-		return action_list, mem_state
+		return pred_actions, mem_state

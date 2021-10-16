@@ -256,8 +256,12 @@ class EntityRankingModel(nn.Module):
 				token_offset += num_tokens
 				continue
 
-			# Add the current document offset
+			# Add the document offset to mentions predicted for the current chunk
+			# It's important to add the offset before clustering because features like
+			# number of tokens between the last mention of the cluster and the current mention
+			# will be affected if the current token indices of the mention are not supplied.
 			cur_pred_mentions = proposer_output_dict.get('ments') + token_offset
+
 			# Update the document offset for next iteration
 			token_offset += num_tokens
 

@@ -30,7 +30,8 @@ class TensorizeDataset:
 		if training:
 			if len(sentences) > 1:
 				# Truncate to prefix - happens rarely for segment length of 4096
-				# For segments <= 2048 it does happen
+				# For segments <= 2048 it does happen reasonably frequently for LitBank and
+				# a few documents in OntoNotes.
 				sentences = sentences[:1]
 				num_words: int = len(sentences[0])
 				sentence_map = sentence_map[:num_words]

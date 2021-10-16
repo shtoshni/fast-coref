@@ -7,7 +7,7 @@ from collections import OrderedDict, Counter
 
 from coref_utils.metrics import CorefEvaluator
 from coref_utils.conll import evaluate_conll
-from coref_utils.utils import get_mention_to_cluster, is_aligned
+from coref_utils.utils import get_mention_to_cluster, is_aligned, filter_clusters
 
 from model.utils import action_sequences_to_clusters
 from model.entity_ranking_model import EntityRankingModel
@@ -63,12 +63,14 @@ def full_coref_evaluation(
 		for example in data_iter_map[split][dataset]:
 			start_time = time.time()
 			pred_mentions, mention_scores, gt_actions, pred_actions = model(example)
-			# Predicted cluster
+
+			# Process predicted clusters
 			raw_predicted_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
-			predicted_clusters, mention_to_predicted = \
-				get_mention_to_cluster(raw_predicted_clusters, threshold=cluster_threshold)
-			gold_clusters, mention_to_gold = \
-				get_mention_to_cluster(example["clusters"], threshold=cluster_threshold)
+			predicted_clusters = filter_clusters(raw_predicted_clusters, threshold=cluster_threshold)
+			mention_to_predicted = get_mention_to_cluster(predicted_clusters)
+
+			gold_clusters = filter_clusters(example["clusters"], threshold=cluster_threshold)
+			mention_to_gold = get_mention_to_cluster(gold_clusters)
 			evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
 
 			elapsed_time = time.time() - start_time
@@ -79,10 +81,10 @@ def full_coref_evaluation(
 
 			total_actions += len(pred_actions)
 
-			# Oracle clustering
+			# Oracle clustering - Best performance possible given the predicted mentions
 			oracle_clusters = action_sequences_to_clusters(gt_actions, pred_mentions)
-			oracle_clusters, mention_to_oracle = \
-				get_mention_to_cluster(oracle_clusters, threshold=cluster_threshold)
+			oracle_clusters = filter_clusters(oracle_clusters, threshold=cluster_threshold)
+			mention_to_oracle = get_mention_to_cluster(oracle_clusters)
 			oracle_evaluator.update(oracle_clusters, gold_clusters, mention_to_oracle, mention_to_gold)
 
 			log_example = dict(example)
@@ -181,7 +183,6 @@ def targeted_coref_evaluation(
 		counter: Dict = Counter()
 		for document in data_iter_map[split][dataset]:
 			pred_mentions, mention_scores, gt_actions, pred_actions = model(document)
-			predicted_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
 
 			log_example = dict(document)
 			del log_example["tensorized_sent"]
@@ -189,8 +190,10 @@ def targeted_coref_evaluation(
 				if isinstance(log_example[key], Tensor):
 					del log_example[key]
 
-			predicted_clusters, mention_to_predicted = \
-				get_mention_to_cluster(predicted_clusters, threshold=1)
+			predicted_clusters = action_sequences_to_clusters(pred_actions, pred_mentions)
+			predicted_clusters = filter_clusters(predicted_clusters, threshold=1)
+			mention_to_predicted = get_mention_to_cluster(predicted_clusters)
+
 			pron_span = tuple(document['pronoun_span'])
 			a_pred, b_pred = False, False  # Default prediction is assumed to be False
 
