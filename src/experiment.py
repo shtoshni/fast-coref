@@ -259,7 +259,7 @@ class Experiment:
 			self.optim_scheduler['mem'] = get_linear_schedule_with_warmup(
 				self.optimizer['mem'], num_warmup_steps=0, num_training_steps=train_config.num_training_steps)
 
-		if optimizer_config.fine_tune_lr is not None:
+		if self.config.model.doc_encoder.finetune:
 			# Optimizer for document encoder
 			no_decay = ['bias', 'LayerNorm.weight']  # No weight decay for bias and layernorm weights
 			encoder_params = self.model.get_params(named=True)[0]
