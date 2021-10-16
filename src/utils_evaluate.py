@@ -137,7 +137,7 @@ def full_coref_evaluation(
 				conll_results = evaluate_conll(
 					config.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
-				for indv_metric in config.indv_metrics_list:
+				for indv_metric in config.metrics:
 					result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
 					result_dict[indv_metric]['precision'] = round(conll_results[indv_metric.lower()]["p"], 1)
 					result_dict[indv_metric]['fscore'] = round(conll_results[indv_metric.lower()]["f"], 1)

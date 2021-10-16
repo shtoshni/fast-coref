@@ -6,6 +6,7 @@ import torch
 import json
 import numpy as np
 import random
+import wandb
 
 from os import path
 from collections import OrderedDict
@@ -73,6 +74,9 @@ class Experiment:
 		self.model = EntityRankingModel(model_config=model_params,  train_config=train_config)
 		if torch.cuda.is_available():
 			self.model.cuda()
+
+		# Print model
+		utils.print_model_info(self.model)
 
 	def _load_data(self):
 		"""Loads and processes the training and evaluation data.
@@ -222,6 +226,7 @@ class Experiment:
 
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
+		print(self.train_info['global_steps'], self.config.trainer.num_training_steps)
 		if self.train_info['global_steps'] >= self.config.trainer.num_training_steps:
 			return False
 
@@ -323,8 +328,8 @@ class Experiment:
 
 					if scaler is not None:
 						with torch.cuda.amp.autocast():
-							loss = model.forward_training(document)
-							total_loss = loss['total']
+							loss_dict = model.forward_training(document)
+							total_loss = loss_dict['total']
 							if total_loss is None:
 								return None
 
@@ -332,8 +337,8 @@ class Experiment:
 							for key in optimizer:
 								scaler.unscale_(optimizer[key])
 					else:
-						loss = model.forward_training(document)
-						total_loss = loss['total']
+						loss_dict: Dict = model.forward_training(document)
+						total_loss = loss_dict['total']
 						if total_loss is None:
 							return None
 
@@ -365,6 +370,7 @@ class Experiment:
 						(torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
 					)
 					torch.cuda.reset_peak_memory_stats()
+					wandb.log({"train/loss": loss, 'batch': self.train_info['global_steps']})
 
 				if train_config.eval_per_k_steps and \
 							(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
@@ -412,7 +418,16 @@ class Experiment:
 		for dataset in self.data_iter_map['dev']:
 			result_dict = coref_evaluation(
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
-			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
+			for key in result_dict:
+				# Log result for individual metrics
+				wandb.log(
+					{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
+					 "batch": self.train_info['global_steps']})
+
+			# Log the overall F-score
+			wandb.log(
+				{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
+				 "batch": self.train_info['global_steps']})
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score

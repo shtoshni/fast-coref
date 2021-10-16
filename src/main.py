@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 import hydra
 import hashlib
 import json
+import wandb
 
 from experiment import Experiment
 
@@ -13,28 +14,33 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 @hydra.main(config_path="conf", config_name="config")
-def main(cfg):
-	masked_copy = OmegaConf.masked_copy(cfg, ['datasets', 'model', 'trainer', 'optimizer'])
-	print(masked_copy)
+def main(config):
+	masked_copy = OmegaConf.masked_copy(config, ['datasets', 'model', 'trainer', 'optimizer'])
 	encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
 	hash_obj = hashlib.md5()
 	hash_obj.update(encoded)
 
 	model_name = str(hash_obj.hexdigest())
-	cfg.paths.model_dir = path.join(cfg.paths.base_model_dir, cfg.paths.model_name_prefix + model_name)
-	cfg.paths.best_model_dir = path.join(cfg.paths.model_dir, 'best')
+	config.paths.model_dir = path.join(
+		config.paths.base_model_dir, config.paths.model_name_prefix + model_name)
+	config.paths.best_model_dir = path.join(config.paths.model_dir, 'best')
 
-	for model_dir in [cfg.paths.model_dir, cfg.paths.best_model_dir]:
+	for model_dir in [config.paths.model_dir, config.paths.best_model_dir]:
 		if not path.exists(model_dir):
 			os.makedirs(model_dir)
 
-	if cfg.paths.model_path is None:
-		cfg.paths.model_path = path.join(cfg.paths.model_dir, cfg.paths.model_filename)
-	if cfg.paths.best_model_path is None:
-		cfg.paths.best_model_path = path.join(cfg.paths.best_model_dir, cfg.paths.model_filename)
+	if config.paths.model_path is None:
+		config.paths.model_path = path.join(config.paths.model_dir, config.paths.model_filename)
+	if config.paths.best_model_path is None:
+		config.paths.best_model_path = path.join(
+			config.paths.best_model_dir, config.paths.model_filename)
 
-	print(OmegaConf.to_yaml(cfg))
-	Experiment(cfg)
+	# Wandb Initialization
+	wandb.init(
+		project="Coreference", notes="Thesis updates", tags="thesis", config=dict(config),
+		# settings=wandb.Settings(start_method="fork")
+	)
+	Experiment(config)
 
 
 if __name__ == "__main__":

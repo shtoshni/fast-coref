@@ -11,6 +11,7 @@ def filter_clusters(clusters: List, threshold: int = 1) -> List:
 def get_mention_to_cluster(clusters: List) -> Dict:
 	"""Get mention to cluster mapping."""
 
+	clusters = [tuple(tuple(mention) for mention in cluster) for cluster in clusters]
 	mention_to_cluster_dict = {}
 	for cluster in clusters:
 		for mention in cluster:
@@ -21,6 +22,7 @@ def get_mention_to_cluster(clusters: List) -> Dict:
 def get_mention_to_cluster_idx(clusters: List) -> Dict:
 	"""Get mention to cluster idx mapping while filtering clustering."""
 
+	clusters = [tuple(tuple(mention) for mention in cluster) for cluster in clusters]
 	mention_to_cluster_dict = {}
 	for cluster_idx, cluster in enumerate(clusters):
 		for mention in cluster:
