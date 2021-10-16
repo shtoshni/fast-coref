@@ -82,13 +82,6 @@ def get_sentence_map(segments, sentence_end):
 def get_tokenizer(model_str):
 	if 'longformer' in model_str:
 		tokenizer = LongformerTokenizerFast.from_pretrained(model_str, add_prefix_space=True)
-		# tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
-		#
-		# def tokenize_fn(word, self=tokenizer):
-		# 	return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
-		#
-		# tokenizer.tokenize = tokenize_fn
-
 	else:
 		tokenizer = AutoTokenizer.from_pretrained(model_str)
 

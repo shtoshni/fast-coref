@@ -504,6 +504,7 @@ class Experiment:
 		"""
 
 		checkpoint = torch.load(location, map_location='cpu')
+		self.config = checkpoint['config']
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 
 		if self.config.model.doc_encoder.finetune:
