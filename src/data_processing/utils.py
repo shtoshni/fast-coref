@@ -2,7 +2,7 @@ import argparse
 import os
 import collections
 from os import path
-from auto_memory_model.constants import MODEL_TO_MAX_LEN, MODEL_TO_MODEL_STR
+from constants import MODEL_TO_MAX_LEN, MODEL_TO_MODEL_STR
 from transformers import LongformerTokenizerFast, AutoTokenizer
 
 
@@ -82,12 +82,12 @@ def get_sentence_map(segments, sentence_end):
 def get_tokenizer(model_str):
 	if 'longformer' in model_str:
 		tokenizer = LongformerTokenizerFast.from_pretrained(model_str, add_prefix_space=True)
-		tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
-
-		def tokenize_fn(word, self=tokenizer):
-			return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
-
-		tokenizer.tokenize = tokenize_fn
+		# tokenizer_map = {".": ["."], ",": [","], "!": ["!"], "?": ["?"], ":": [":"], ";": [";"], "'s": ["'s"]}
+		#
+		# def tokenize_fn(word, self=tokenizer):
+		# 	return tokenizer_map[word] if word in tokenizer_map else self.tokenize(word)
+		#
+		# tokenizer.tokenize = tokenize_fn
 
 	else:
 		tokenizer = AutoTokenizer.from_pretrained(model_str)
@@ -98,7 +98,7 @@ def get_tokenizer(model_str):
 def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('input_dir', type=str, help="Input directory.")
-	parser.add_argument('output_dir', type=str, help="Output directory.")
+	parser.add_argument('-output_dir', type=str, default=None, help="Output directory.")
 	parser.add_argument('-model', default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
 	                    type=str, help="Model type.")
 	parser.add_argument('-seg_len', default=2048, help="Max. segment length")
@@ -106,6 +106,11 @@ def parse_args():
 	                    help="Speaker represented in text.")
 
 	args = parser.parse_args()
+
+	if args.output_dir is None:
+		base_dir = path.dirname(args.input_dir)
+		args.output_dir = path.join(base_dir, args.model + ("_speaker" if args.add_speaker else ''))
+
 	assert (path.exists(args.input_dir))
 	assert (MODEL_TO_MAX_LEN[args.model] >= args.seg_len)
 
@@ -113,7 +118,7 @@ def parse_args():
 	args.model = MODEL_TO_MODEL_STR[args.model]
 	args.tokenizer = get_tokenizer(args.model)
 
-	print(args.tokenizer.tokenize("Hello"))
+	# print(args.tokenizer.tokenize("Hello"))
 
 	if not os.path.exists(args.output_dir):
 		os.makedirs(args.output_dir)

@@ -62,12 +62,13 @@ class OntoNotesDocumentState(BaseDocumentState):
 		self.subtoken_map = flatten(self.segment_subtoken_map)
 		assert len(all_mentions) == len(set(all_mentions))
 		num_words = len(flatten(self.segments))
-		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
-		assert num_words == len(sentence_map), (num_words, len(sentence_map))
-		assert num_words == len(self.orig_subtoken_map), (num_words, len(self.orig_subtoken_map))
+		assert num_words == len(self.subtoken_map), (num_words, len(self.subtoken_map))
+		assert num_words == len(self.sentence_map), (num_words, len(self.sentence_map))
 
 	def finalize(self):
 		self.final_processing()
+		num_words = len(flatten(self.segments))
+		assert num_words == len(self.orig_subtoken_map), (num_words, len(self.orig_subtoken_map))
 		return {
 			"doc_key": self.doc_key,
 			"sentences": self.segments,
