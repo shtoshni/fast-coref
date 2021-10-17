@@ -422,6 +422,19 @@ class Experiment:
 				break
 			logger.handlers[0].flush()
 
+	def _wandb_log(self, result_dict, dataset, split="dev"):
+		for key in result_dict:
+			# Log result for individual metrics
+			if isinstance(result_dict[key], dict):
+				wandb.log(
+					{f"{split}/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
+					 "batch": self.train_info['global_steps']})
+
+		# Log the overall F-score
+		wandb.log(
+			{f"{split}/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
+			 "batch": self.train_info['global_steps']})
+
 	@torch.no_grad()
 	def periodic_model_eval(self) -> float:
 		"""Method for evaluating and saving the model during the training loop.
@@ -438,17 +451,18 @@ class Experiment:
 			result_dict = coref_evaluation(
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
-			for key in result_dict:
-				# Log result for individual metrics
-				if isinstance(result_dict[key], dict):
-					wandb.log(
-						{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-						 "batch": self.train_info['global_steps']})
-
-			# Log the overall F-score
-			wandb.log(
-				{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-				 "batch": self.train_info['global_steps']})
+			self._wandb_log(result_dict, dataset=dataset, split="dev")
+			# for key in result_dict:
+			# 	# Log result for individual metrics
+			# 	if isinstance(result_dict[key], dict):
+			# 		wandb.log(
+			# 			{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
+			# 			 "batch": self.train_info['global_steps']})
+			#
+			# # Log the overall F-score
+			# wandb.log(
+			# 	{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
+			# 	 "batch": self.train_info['global_steps']})
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score
@@ -501,6 +515,7 @@ class Experiment:
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
 					conll_data_dir=self.conll_data_dir
 				)
+				self._wandb_log(result_dict, dataset=dataset, split=split)
 
 				output_dict = dict(base_output_dict)
 				output_dict[f"{dataset}_{split}"] = result_dict
