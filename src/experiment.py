@@ -418,6 +418,7 @@ class Experiment:
 		for dataset in self.data_iter_map['dev']:
 			result_dict = coref_evaluation(
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
+			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
 			for key in result_dict:
 				# Log result for individual metrics
 				if isinstance(result_dict[key], dict):
