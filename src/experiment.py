@@ -384,7 +384,6 @@ class Experiment:
 						% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
 
 					# Check stopping criteria
-					print(self._is_training_remaining())
 					if not self._is_training_remaining():
 						break
 
@@ -403,6 +402,9 @@ class Experiment:
 							wandb.mark_preempting()
 							sys.exit()
 
+			# Check stopping criteria
+			if not self._is_training_remaining():
+				break
 			logger.handlers[0].flush()
 
 	@torch.no_grad()
