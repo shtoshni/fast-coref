@@ -184,15 +184,21 @@ class Experiment:
 				If the above two models don't exist, set the random seeds for training initialization.
 		"""
 
-		conf_paths = self.config.paths
+		# conf_paths = self.config.paths
+		#
+		# if (self.config.paths.model_path is None) or (not path.exists(self.config.paths.model_path)):
+		# 	# Model path is specified via CLI - Probably for evaluation
+		# 	self.model_path = self.config.paths.model_path
+		# 	self.best_model_path = self.config.paths.model_path
+		# 	print(self.config.paths)
+		# 	print(self.model_path)
+		# else:
+		# 	self.model_path = path.join(conf_paths.model_dir, conf_paths.model_filename)
+		# 	self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_filename)
+		# 	print(self.best_model_path)
 
-		if (self.config.paths.model_path is None) or (not path.exists(self.config.paths.model_path)):
-			# Model path is specified via CLI - Probably for evaluation
-			self.model_path = self.config.paths.model_path
-			self.best_model_path = self.config.paths.model_path
-		else:
-			self.model_path = path.join(conf_paths.model_dir, conf_paths.model_filename)
-			self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_filename)
+		self.model_path = self.config.paths.model_path
+		self.best_model_path = self.config.paths.best_model_path
 
 		if last_checkpoint:
 			# Resume training
