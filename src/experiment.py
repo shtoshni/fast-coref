@@ -64,8 +64,16 @@ class Experiment:
 				self.train()
 
 		# Step 4 - Perform final evaluation
-		self.load_model(self.best_model_path, last_checkpoint=False)
-		self.perform_final_eval()
+		if path.exists(self.best_model_path):
+			self.load_model(self.best_model_path, last_checkpoint=False)
+			self.perform_final_eval()
+		elif path.exists(self.model_path):
+			logger.info("Couldn't find the best model! Using the last checkpoint!")
+			self.load_model(self.best_model_path, last_checkpoint=True)
+			self.perform_final_eval()
+		else:
+			logger.info("No model accessible!")
+			sys.exit(1)
 
 	def _build_model(self) -> None:
 		"""Constructs the model with given config."""
