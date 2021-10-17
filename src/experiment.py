@@ -8,6 +8,7 @@ import numpy as np
 import random
 import wandb
 
+from omegaconf import OmegaConf
 from os import path
 from collections import OrderedDict
 from transformers import get_linear_schedule_with_warmup, AdamW
@@ -465,7 +466,7 @@ class Experiment:
 		"""Method to evaluate the model after training has finished."""
 
 		self.model.eval()
-		base_output_dict = dict(self.config)
+		base_output_dict = OmegaConf.to_container(self.config)
 		perf_summary = {
 			'model_dir': path.normpath(self.config.paths.model_dir), 'best_perf': self.train_info['val_perf']}
 		logging.info("Validation performance: %.1f" % self.train_info['val_perf'])
