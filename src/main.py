@@ -37,8 +37,8 @@ def main(config):
 
 	# Wandb Initialization
 	wandb.init(
-		project="Coreference", notes="Thesis updates", tags="thesis", config=dict(config),
-		resume="allow", id=model_name
+		id=model_name, project="Coreference", config=dict(config), resume=True,
+		notes="Thesis updates", tags="thesis",
 		# settings=wandb.Settings(start_method="fork")
 	)
 	Experiment(config)

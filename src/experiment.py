@@ -384,6 +384,7 @@ class Experiment:
 						% (self.train_info['global_steps'], fscore, self.train_info['val_perf'], elapsed_time))
 
 					# Check stopping criteria
+					print(self._is_training_remaining())
 					if not self._is_training_remaining():
 						break
 
@@ -399,6 +400,7 @@ class Experiment:
 
 						if rem_time < avg_eval_time:
 							logging.info('Canceling job as not much time left')
+							wandb.mark_preempting()
 							sys.exit()
 
 			logger.handlers[0].flush()
