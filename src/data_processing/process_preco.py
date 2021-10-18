@@ -29,7 +29,7 @@ class PrecoDocumentState(BaseDocumentState):
 
 
 def get_document(instance, tokenizer, segment_len):
-	document_state = DocumentState(instance["id"])
+	document_state = PrecoDocumentState(instance["id"])
 	doc_word_idx = -1
 
 	sentence_word_map = {}

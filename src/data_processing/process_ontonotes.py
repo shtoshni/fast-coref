@@ -86,7 +86,7 @@ def process_speaker(speaker):
 
 
 def get_document(document_lines, args):
-	document_state = DocumentState(document_lines[0])
+	document_state = OntoNotesDocumentState(document_lines[0])
 
 	tokenizer = args.tokenizer
 	word_idx = -1
