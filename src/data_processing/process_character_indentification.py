@@ -5,7 +5,6 @@ from os import path
 from data_processing.constants import SPEAKER_START, SPEAKER_END
 from data_processing.utils import split_into_segments, parse_args
 from data_processing.process_preco import PrecoDocumentState
-from data_processing.process_ontonotes import minimize_split
 
 
 class DocumentState(PrecoDocumentState):
@@ -124,6 +123,17 @@ def minimize_partition(split, args):
 				count += 1
 
 		print("Wrote {} documents to {}".format(count, output_path))
+
+
+def minimize_split(args):
+	tokenizer = args.tokenizer
+	if args.add_speaker:
+		tokenizer.add_special_tokens({
+			'additional_special_tokens': [SPEAKER_START, SPEAKER_END]
+		})
+
+	for split in ["dev", "test", "train"]:
+		minimize_partition(split, args)
 
 
 if __name__ == "__main__":

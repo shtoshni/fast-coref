@@ -89,6 +89,10 @@ def get_document(text_file, xml_file, tokenizer, segment_len):
 def minimize_split(args, split="test"):
 	tokenizer = args.tokenizer
 
+	annotation_path = path.join(args.input_dir, "Annotation")
+	if path.exists(annotation_path):
+		args.input_dir = annotation_path
+
 	text_files = glob.glob(path.join(args.input_dir, "*/*.txt"))
 	xml_files = []
 	for text_file in text_files:
