@@ -47,6 +47,6 @@ def main(config):
 
 
 if __name__ == "__main__":
-	import sys
-	sys.argv.append(f'hydra.run.dir={os.path.expanduser("~")}')
+	# import sys
+	# sys.argv.append(f'hydra.run.dir={os.path.expanduser("~")}')
 	main()
