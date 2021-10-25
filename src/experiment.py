@@ -25,7 +25,6 @@ from utils_evaluate import coref_evaluation
 from typing import Dict, Union, List, Optional
 from omegaconf import DictConfig
 
-
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
 
@@ -80,7 +79,7 @@ class Experiment:
 
 		model_params: DictConfig = self.config.model
 		train_config: DictConfig = self.config.trainer
-		self.model = EntityRankingModel(model_config=model_params,  train_config=train_config)
+		self.model = EntityRankingModel(model_config=model_params, train_config=train_config)
 		if torch.cuda.is_available():
 			self.model.cuda()
 
@@ -90,17 +89,17 @@ class Experiment:
 	def _load_data(self):
 		"""Loads and processes the training and evaluation data.
 
-		Loads the data concerning all the specified datasets for training and eval.
-		The first part of this method loads all the data from the preprocessed jsonline files.
-		In the second half, the loaded data is tensorized for consumption by the model.
+Loads the data concerning all the specified datasets for training and eval.
+The first part of this method loads all the data from the preprocessed jsonline files.
+In the second half, the loaded data is tensorized for consumption by the model.
 
-		Apart from loading and processing the data, the method also populates important
-		attributes such as:
-			num_train_docs_map (dict): Dictionary to maintain the number of training
-				docs per dataset which is useful for implementing sampling in joint training.
-			num_training_steps (int): Number of total training steps.
-			eval_per_k_steps (int): Number of gradient updates before each evaluation.
-		"""
+Apart from loading and processing the data, the method also populates important
+attributes such as:
+	num_train_docs_map (dict): Dictionary to maintain the number of training
+		docs per dataset which is useful for implementing sampling in joint training.
+	num_training_steps (int): Number of total training steps.
+	eval_per_k_steps (int): Number of gradient updates before each evaluation.
+"""
 
 		self.num_train_docs_map, self.data_iter_map, self.conll_data_dir = {}, {}, {}
 		raw_data_map = {}
@@ -186,11 +185,11 @@ class Experiment:
 	def _load_previous_checkpoint(self, last_checkpoint=True):
 		"""Loads the last checkpoint or best checkpoint.
 
-		Args:
-			last_checkpoint: If true, load the last checkpoint to resume training.
-				Otherwise, load the best model for evaluation.
-				If the above two models don't exist, set the random seeds for training initialization.
-		"""
+Args:
+	last_checkpoint: If true, load the last checkpoint to resume training.
+		Otherwise, load the best model for evaluation.
+		If the above two models don't exist, set the random seeds for training initialization.
+"""
 
 		# conf_paths = self.config.paths
 		#
@@ -231,13 +230,13 @@ class Experiment:
 	def _is_training_remaining(self):
 		"""Check if training is done or remaining.
 
-		There are two cases where we don't resume training:
-		(a) The dev performance has not improved for the allowed patience parameter.
-		(b) Number of gradient updates is already >= Total training steps.
+There are two cases where we don't resume training:
+(a) The dev performance has not improved for the allowed patience parameter.
+(b) Number of gradient updates is already >= Total training steps.
 
-		Returns:
-			bool: If true, we resume training. Otherwise do final evaluation.
-		"""
+Returns:
+	bool: If true, we resume training. Otherwise do final evaluation.
+"""
 
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
@@ -287,8 +286,7 @@ class Experiment:
 				{'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
 				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 1e-2},
 				{'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
-				 'lr': optimizer_config.fine_tune_lr,
-				 'weight_decay': 0.0}
+				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 0.0}
 			]
 
 			self.optimizer['doc'] = AdamW(grouped_param, lr=optimizer_config.fine_tune_lr, eps=1e-6)
@@ -306,9 +304,9 @@ class Experiment:
 	def train(self) -> None:
 		"""Method for training the model.
 
-		This method implements the training loop.
-		Within the training loop, the model is periodically evaluated on the dev set(s).
-		"""
+This method implements the training loop.
+Within the training loop, the model is periodically evaluated on the dev set(s).
+"""
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 		model.train()
 
@@ -427,21 +425,19 @@ class Experiment:
 			# Log result for individual metrics
 			if isinstance(result_dict[key], dict):
 				wandb.log(
-					{f"{split}/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-					 "batch": self.train_info['global_steps']})
+					{f"{split}/{dataset}/{key}": result_dict[key].get('fscore', 0.0), "batch": self.train_info['global_steps']})
 
 		# Log the overall F-score
 		wandb.log(
-			{f"{split}/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-			 "batch": self.train_info['global_steps']})
+			{f"{split}/{dataset}/CoNLL": result_dict.get('fscore', 0.0), "batch": self.train_info['global_steps']})
 
 	@torch.no_grad()
 	def periodic_model_eval(self) -> float:
 		"""Method for evaluating and saving the model during the training loop.
 
-		Returns:
-			float: Average CoNLL F-score over all the development sets of datasets.
-		"""
+Returns:
+	float: Average CoNLL F-score over all the development sets of datasets.
+"""
 
 		self.model.eval()
 
@@ -452,17 +448,17 @@ class Experiment:
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
 			self._wandb_log(result_dict, dataset=dataset, split="dev")
-			# for key in result_dict:
-			# 	# Log result for individual metrics
-			# 	if isinstance(result_dict[key], dict):
-			# 		wandb.log(
-			# 			{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-			# 			 "batch": self.train_info['global_steps']})
-			#
-			# # Log the overall F-score
-			# wandb.log(
-			# 	{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-			# 	 "batch": self.train_info['global_steps']})
+		# for key in result_dict:
+		# 	# Log result for individual metrics
+		# 	if isinstance(result_dict[key], dict):
+		# 		wandb.log(
+		# 			{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
+		# 			 "batch": self.train_info['global_steps']})
+		#
+		# # Log the overall F-score
+		# wandb.log(
+		# 	{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
+		# 	 "batch": self.train_info['global_steps']})
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score
@@ -536,7 +532,7 @@ class Experiment:
 				os.makedirs(perf_dir)
 
 			gold_ment_str = ''
-			if self.model.use_gold_ments:
+			if self.config.model.mention_params.use_gold_ments:
 				gold_ment_str = '_gold'
 			summary_file = path.join(perf_dir, self.config.infra.job_id + gold_ment_str + ".json")
 
@@ -546,13 +542,13 @@ class Experiment:
 	def load_model(self, location: str, last_checkpoint=True) -> None:
 		"""Load model from given location.
 
-		Args:
-			location: str
-				Location of checkpoint
-			last_checkpoint: bool
-				Whether the checkpoint is the last one saved or not.
-				If false, don't load optimizers, schedulers, and other training variables.
-		"""
+Args:
+	location: str
+		Location of checkpoint
+	last_checkpoint: bool
+		Whether the checkpoint is the last one saved or not.
+		If false, don't load optimizers, schedulers, and other training variables.
+"""
 
 		checkpoint = torch.load(location, map_location='cpu')
 		self.config = checkpoint['config']
@@ -584,12 +580,12 @@ class Experiment:
 	def save_model(self, location: os.PathLike, last_checkpoint=True) -> None:
 		"""Save model.
 
-		Args:
-			location: Location of checkpoint
-			last_checkpoint:
-				Whether the checkpoint is the last one saved or not.
-				If false, don't save optimizers and schedulers which take up a lot of space.
-		"""
+Args:
+	location: Location of checkpoint
+	last_checkpoint:
+		Whether the checkpoint is the last one saved or not.
+		If false, don't save optimizers and schedulers which take up a lot of space.
+"""
 
 		model_state_dict = OrderedDict(self.model.state_dict())
 		doc_encoder_state_dict = {}
@@ -639,5 +635,3 @@ class Experiment:
 
 		torch.save(save_dict, location)
 		logging.info(f"Model saved at: {location}")
-
-
