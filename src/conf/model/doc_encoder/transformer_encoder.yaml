@@ -1,5 +1,5 @@
 defaults:
-  - transformer: longformer_base
+  - transformer: longformer_large
 
 chunking: independent
 finetune: true  # Add logic of finetuning depending on the training logic
