@@ -534,7 +534,7 @@ Returns:
 			gold_ment_str = ''
 			if self.config.model.mention_params.use_gold_ments:
 				gold_ment_str = '_gold'
-			summary_file = path.join(perf_dir, self.config.infra.job_id + gold_ment_str + ".json")
+			summary_file = path.join(perf_dir, str(self.config.infra.job_id) + gold_ment_str + ".json")
 
 		json.dump(perf_summary, open(summary_file, 'w'), indent=2)
 		logger.info("Performance summary file: %s" % summary_file)
