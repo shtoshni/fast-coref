@@ -547,6 +547,9 @@ class Experiment:
 			self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
 
+			if torch.cuda.is_available():
+				self.model.cuda()
+
 		if last_checkpoint:
 			# If resuming training, restore the optimizer state as well
 			for param_group in checkpoint['optimizer']:
