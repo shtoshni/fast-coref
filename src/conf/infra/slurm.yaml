@@ -1,6 +1,8 @@
 is_local: False
 job_time: 14280
 job_id: null
+work_dir: "./"
+
 
 #hydra:
 #  run:
