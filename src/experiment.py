@@ -541,9 +541,10 @@ class Experiment:
 			logger.info("Loading document encoder from %s" % path.abspath(doc_encoder_dir))
 
 			# Load the encoder
-			self.model.mention_proposer.doc_encoder.lm_encoder.from_pretrained(
+			from transformers import AutoModel, AutoTokenizer
+			self.model.mention_proposer.doc_encoder.lm_encoder = AutoModel.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
-			self.model.mention_proposer.doc_encoder.tokenizer.from_pretrained(
+			self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
 
 		if last_checkpoint:
