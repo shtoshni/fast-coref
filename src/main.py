@@ -21,18 +21,18 @@ def main(config):
 	hash_obj.update(encoded)
 
 	model_name = str(hash_obj.hexdigest())
-	config.paths.model_dir = path.join(
-		config.paths.base_model_dir, config.paths.model_name_prefix + model_name)
-	config.paths.best_model_dir = path.join(config.paths.model_dir, 'best')
+	config.paths.model_dir = path.abspath(path.join(
+		config.paths.base_model_dir, config.paths.model_name_prefix + model_name))
+	config.paths.best_model_dir = path.abspath(path.join(config.paths.model_dir, 'best'))
 
 	for model_dir in [config.paths.model_dir, config.paths.best_model_dir]:
 		if not path.exists(model_dir):
 			os.makedirs(model_dir)
 
 	if config.paths.model_path is None:
-		config.paths.model_path = path.join(config.paths.model_dir, config.paths.model_filename)
-		config.paths.best_model_path = path.join(
-			config.paths.best_model_dir, config.paths.model_filename)
+		config.paths.model_path = path.abspath(path.join(config.paths.model_dir, config.paths.model_filename))
+		config.paths.best_model_path = path.abspath(path.join(
+			config.paths.best_model_dir, config.paths.model_filename))
 
 	if config.paths.best_model_path is None and (config.paths.model_path is not None):
 		config.paths.best_model_path = config.paths.model_path
@@ -41,7 +41,6 @@ def main(config):
 	wandb.init(
 		id=model_name, project="Coreference", config=dict(config), resume=True,
 		notes="Thesis updates", tags="thesis",
-		# settings=wandb.Settings(start_method="fork")
 	)
 	Experiment(config)
 

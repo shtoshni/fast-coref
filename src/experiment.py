@@ -89,17 +89,17 @@ class Experiment:
 	def _load_data(self):
 		"""Loads and processes the training and evaluation data.
 
-Loads the data concerning all the specified datasets for training and eval.
-The first part of this method loads all the data from the preprocessed jsonline files.
-In the second half, the loaded data is tensorized for consumption by the model.
+		Loads the data concerning all the specified datasets for training and eval.
+		The first part of this method loads all the data from the preprocessed jsonline files.
+		In the second half, the loaded data is tensorized for consumption by the model.
 
-Apart from loading and processing the data, the method also populates important
-attributes such as:
-	num_train_docs_map (dict): Dictionary to maintain the number of training
-		docs per dataset which is useful for implementing sampling in joint training.
-	num_training_steps (int): Number of total training steps.
-	eval_per_k_steps (int): Number of gradient updates before each evaluation.
-"""
+		Apart from loading and processing the data, the method also populates important
+		attributes such as:
+			num_train_docs_map (dict): Dictionary to maintain the number of training
+				docs per dataset which is useful for implementing sampling in joint training.
+			num_training_steps (int): Number of total training steps.
+			eval_per_k_steps (int): Number of gradient updates before each evaluation.
+		"""
 
 		self.num_train_docs_map, self.data_iter_map, self.conll_data_dir = {}, {}, {}
 		raw_data_map = {}
@@ -132,6 +132,8 @@ attributes such as:
 			# Datasets such as litbank have cross validation splits
 			if attributes.get('cross_val_split', None) is not None:
 				data_dir = path.join(data_dir, str(attributes.get('cross_val_split')))
+
+			logger.info("Data directory: %s" % data_dir)
 
 			# CoNLL data dir
 			if attributes.get('has_conll', False):
@@ -185,24 +187,11 @@ attributes such as:
 	def _load_previous_checkpoint(self, last_checkpoint=True):
 		"""Loads the last checkpoint or best checkpoint.
 
-Args:
-	last_checkpoint: If true, load the last checkpoint to resume training.
-		Otherwise, load the best model for evaluation.
-		If the above two models don't exist, set the random seeds for training initialization.
-"""
-
-		# conf_paths = self.config.paths
-		#
-		# if (self.config.paths.model_path is None) or (not path.exists(self.config.paths.model_path)):
-		# 	# Model path is specified via CLI - Probably for evaluation
-		# 	self.model_path = self.config.paths.model_path
-		# 	self.best_model_path = self.config.paths.model_path
-		# 	print(self.config.paths)
-		# 	print(self.model_path)
-		# else:
-		# 	self.model_path = path.join(conf_paths.model_dir, conf_paths.model_filename)
-		# 	self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_filename)
-		# 	print(self.best_model_path)
+		Args:
+			last_checkpoint: If true, load the last checkpoint to resume training.
+				Otherwise, load the best model for evaluation.
+				If the above two models don't exist, set the random seeds for training initialization.
+		"""
 
 		self.model_path = self.config.paths.model_path
 		self.best_model_path = self.config.paths.best_model_path
@@ -230,13 +219,13 @@ Args:
 	def _is_training_remaining(self):
 		"""Check if training is done or remaining.
 
-There are two cases where we don't resume training:
-(a) The dev performance has not improved for the allowed patience parameter.
-(b) Number of gradient updates is already >= Total training steps.
+		There are two cases where we don't resume training:
+		(a) The dev performance has not improved for the allowed patience parameter.
+		(b) Number of gradient updates is already >= Total training steps.
 
-Returns:
-	bool: If true, we resume training. Otherwise do final evaluation.
-"""
+		Returns:
+			bool: If true, we resume training. Otherwise do final evaluation.
+		"""
 
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
@@ -257,6 +246,7 @@ Returns:
 
 	def _initialize_optimizers(self):
 		"""Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
+
 		optimizer_config: DictConfig = self.config.optimizer
 		train_config: DictConfig = self.config.trainer
 		self.optimizer, self.optim_scheduler = {}, {}
@@ -304,9 +294,10 @@ Returns:
 	def train(self) -> None:
 		"""Method for training the model.
 
-This method implements the training loop.
-Within the training loop, the model is periodically evaluated on the dev set(s).
-"""
+		This method implements the training loop.
+		Within the training loop, the model is periodically evaluated on the dev set(s).
+		"""
+
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 		model.train()
 
@@ -407,11 +398,11 @@ Within the training loop, the model is periodically evaluated on the dev set(s).
 
 						avg_eval_time = eval_time['total_time'] / eval_time['num_evals']
 						rem_time = self.config.infra.job_time - eval_time['total_time']
-						logging.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
+						logger.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
 						             % (avg_eval_time / 60, rem_time / 60))
 
 						if rem_time < avg_eval_time:
-							logging.info('Canceling job as not much time left')
+							logger.info('Canceling job as not much time left')
 							wandb.mark_preempting()
 							sys.exit()
 
@@ -435,9 +426,9 @@ Within the training loop, the model is periodically evaluated on the dev set(s).
 	def periodic_model_eval(self) -> float:
 		"""Method for evaluating and saving the model during the training loop.
 
-Returns:
-	float: Average CoNLL F-score over all the development sets of datasets.
-"""
+		Returns:
+			float: Average CoNLL F-score over all the development sets of datasets.
+		"""
 
 		self.model.eval()
 
@@ -448,17 +439,6 @@ Returns:
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
 			self._wandb_log(result_dict, dataset=dataset, split="dev")
-		# for key in result_dict:
-		# 	# Log result for individual metrics
-		# 	if isinstance(result_dict[key], dict):
-		# 		wandb.log(
-		# 			{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-		# 			 "batch": self.train_info['global_steps']})
-		#
-		# # Log the overall F-score
-		# wandb.log(
-		# 	{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-		# 	 "batch": self.train_info['global_steps']})
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score
@@ -493,7 +473,7 @@ Returns:
 		base_output_dict = OmegaConf.to_container(self.config)
 		perf_summary = {
 			'model_dir': path.normpath(self.config.paths.model_dir), 'best_perf': self.train_info['val_perf']}
-		logging.info("Validation performance: %.1f" % self.train_info['val_perf'])
+		logger.info("Validation performance: %.1f" % self.train_info['val_perf'])
 
 		for split in ['test']:
 			logger.info('\n')
@@ -509,8 +489,7 @@ Returns:
 
 				result_dict = coref_evaluation(
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
-					conll_data_dir=self.conll_data_dir
-				)
+					conll_data_dir=self.conll_data_dir)
 				self._wandb_log(result_dict, dataset=dataset, split=split)
 
 				output_dict = dict(base_output_dict)
@@ -519,7 +498,7 @@ Returns:
 
 				json.dump(output_dict, open(perf_file, 'w'), indent=2)
 
-				logging.info("Final performance summary at %s" % perf_file)
+				logger.info("Final performance summary at %s" % path.abspath(perf_file))
 				sys.stdout.flush()
 
 		summary_file = path.join(self.config.paths.model_dir, 'perf.json')
@@ -537,29 +516,34 @@ Returns:
 			summary_file = path.join(perf_dir, str(self.config.infra.job_id) + gold_ment_str + ".json")
 
 		json.dump(perf_summary, open(summary_file, 'w'), indent=2)
-		logger.info("Performance summary file: %s" % summary_file)
+		logger.info("Performance summary file: %s" % path.abspath(summary_file))
 
 	def load_model(self, location: str, last_checkpoint=True) -> None:
 		"""Load model from given location.
 
-Args:
-	location: str
-		Location of checkpoint
-	last_checkpoint: bool
-		Whether the checkpoint is the last one saved or not.
-		If false, don't load optimizers, schedulers, and other training variables.
-"""
+		Args:
+			location: str
+				Location of checkpoint
+			last_checkpoint: bool
+				Whether the checkpoint is the last one saved or not.
+				If false, don't load optimizers, schedulers, and other training variables.
+		"""
 
 		checkpoint = torch.load(location, map_location='cpu')
+		logger.info("Loading model from %s" % path.abspath(location))
+
 		self.config = checkpoint['config']
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 
 		if self.config.model.doc_encoder.finetune:
 			# Load the document encoder params if encoder is finetuned
 			doc_encoder_dir = path.join(path.dirname(location), self.config.paths.doc_encoder_dirname)
+			logger.info("Loading document encoder from %s" % path.abspath(doc_encoder_dir))
 
 			# Load the encoder
 			self.model.mention_proposer.doc_encoder.lm_encoder.from_pretrained(
+				pretrained_model_name_or_path=doc_encoder_dir)
+			self.model.mention_proposer.doc_encoder.tokenizer.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
 
 		if last_checkpoint:
@@ -580,12 +564,12 @@ Args:
 	def save_model(self, location: os.PathLike, last_checkpoint=True) -> None:
 		"""Save model.
 
-Args:
-	location: Location of checkpoint
-	last_checkpoint:
-		Whether the checkpoint is the last one saved or not.
-		If false, don't save optimizers and schedulers which take up a lot of space.
-"""
+		Args:
+			location: Location of checkpoint
+			last_checkpoint:
+				Whether the checkpoint is the last one saved or not.
+				If false, don't save optimizers and schedulers which take up a lot of space.
+		"""
 
 		model_state_dict = OrderedDict(self.model.state_dict())
 		doc_encoder_state_dict = {}
@@ -605,7 +589,7 @@ Args:
 			if not path.exists(doc_encoder_dir):
 				os.makedirs(doc_encoder_dir)
 
-			logger.info(f"Encoder saved at {doc_encoder_dir}")
+			logger.info(f"Encoder saved at {path.abspath(doc_encoder_dir)}")
 			# Save the encoder
 			self.model.mention_proposer.doc_encoder.lm_encoder.save_pretrained(
 				save_directory=doc_encoder_dir, save_config=True)
@@ -634,4 +618,4 @@ Args:
 				save_dict['scheduler'][param_group] = self.optim_scheduler[param_group].state_dict()
 
 		torch.save(save_dict, location)
-		logging.info(f"Model saved at: {location}")
+		logger.info(f"Model saved at: {path.abspath(location)}")
