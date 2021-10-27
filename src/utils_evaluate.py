@@ -203,8 +203,10 @@ def targeted_coref_evaluation(
 					a_aligned = is_aligned(span, tuple(document['a_span']))
 					b_aligned = is_aligned(span, tuple(document['b_span']))
 
-					if a_aligned: a_pred = True
-					if b_aligned: b_pred = True
+					if a_aligned:
+						a_pred = True
+					if b_aligned:
+						b_pred = True
 
 			if dataset == 'wsc':
 				span_not_found = False

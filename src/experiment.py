@@ -25,7 +25,6 @@ from utils_evaluate import coref_evaluation
 from typing import Dict, Union, List, Optional
 from omegaconf import DictConfig
 
-
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
 
@@ -80,7 +79,7 @@ class Experiment:
 
 		model_params: DictConfig = self.config.model
 		train_config: DictConfig = self.config.trainer
-		self.model = EntityRankingModel(model_config=model_params,  train_config=train_config)
+		self.model = EntityRankingModel(model_config=model_params, train_config=train_config)
 		if torch.cuda.is_available():
 			self.model.cuda()
 
@@ -133,6 +132,8 @@ class Experiment:
 			# Datasets such as litbank have cross validation splits
 			if attributes.get('cross_val_split', None) is not None:
 				data_dir = path.join(data_dir, str(attributes.get('cross_val_split')))
+
+			logger.info("Data directory: %s" % data_dir)
 
 			# CoNLL data dir
 			if attributes.get('has_conll', False):
@@ -192,19 +193,6 @@ class Experiment:
 				If the above two models don't exist, set the random seeds for training initialization.
 		"""
 
-		# conf_paths = self.config.paths
-		#
-		# if (self.config.paths.model_path is None) or (not path.exists(self.config.paths.model_path)):
-		# 	# Model path is specified via CLI - Probably for evaluation
-		# 	self.model_path = self.config.paths.model_path
-		# 	self.best_model_path = self.config.paths.model_path
-		# 	print(self.config.paths)
-		# 	print(self.model_path)
-		# else:
-		# 	self.model_path = path.join(conf_paths.model_dir, conf_paths.model_filename)
-		# 	self.best_model_path = path.join(conf_paths.best_model_dir, conf_paths.model_filename)
-		# 	print(self.best_model_path)
-
 		self.model_path = self.config.paths.model_path
 		self.best_model_path = self.config.paths.best_model_path
 
@@ -258,6 +246,7 @@ class Experiment:
 
 	def _initialize_optimizers(self):
 		"""Initialize model + optimizer(s). Check if there's a checkpoint in which case we resume from there."""
+
 		optimizer_config: DictConfig = self.config.optimizer
 		train_config: DictConfig = self.config.trainer
 		self.optimizer, self.optim_scheduler = {}, {}
@@ -287,8 +276,7 @@ class Experiment:
 				{'params': [p for n, p in encoder_params if not any(nd in n for nd in no_decay)],
 				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 1e-2},
 				{'params': [p for n, p in encoder_params if any(nd in n for nd in no_decay)],
-				 'lr': optimizer_config.fine_tune_lr,
-				 'weight_decay': 0.0}
+				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 0.0}
 			]
 
 			self.optimizer['doc'] = AdamW(grouped_param, lr=optimizer_config.fine_tune_lr, eps=1e-6)
@@ -309,6 +297,7 @@ class Experiment:
 		This method implements the training loop.
 		Within the training loop, the model is periodically evaluated on the dev set(s).
 		"""
+
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
 		model.train()
 
@@ -409,11 +398,11 @@ class Experiment:
 
 						avg_eval_time = eval_time['total_time'] / eval_time['num_evals']
 						rem_time = self.config.infra.job_time - eval_time['total_time']
-						logging.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
+						logger.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
 						             % (avg_eval_time / 60, rem_time / 60))
 
 						if rem_time < avg_eval_time:
-							logging.info('Canceling job as not much time left')
+							logger.info('Canceling job as not much time left')
 							wandb.mark_preempting()
 							sys.exit()
 
@@ -427,13 +416,11 @@ class Experiment:
 			# Log result for individual metrics
 			if isinstance(result_dict[key], dict):
 				wandb.log(
-					{f"{split}/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-					 "batch": self.train_info['global_steps']})
+					{f"{split}/{dataset}/{key}": result_dict[key].get('fscore', 0.0), "batch": self.train_info['global_steps']})
 
 		# Log the overall F-score
 		wandb.log(
-			{f"{split}/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-			 "batch": self.train_info['global_steps']})
+			{f"{split}/{dataset}/CoNLL": result_dict.get('fscore', 0.0), "batch": self.train_info['global_steps']})
 
 	@torch.no_grad()
 	def periodic_model_eval(self) -> float:
@@ -452,17 +439,6 @@ class Experiment:
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
 			self._wandb_log(result_dict, dataset=dataset, split="dev")
-			# for key in result_dict:
-			# 	# Log result for individual metrics
-			# 	if isinstance(result_dict[key], dict):
-			# 		wandb.log(
-			# 			{f"dev/{dataset}/{key}": result_dict[key].get('fscore', 0.0),
-			# 			 "batch": self.train_info['global_steps']})
-			#
-			# # Log the overall F-score
-			# wandb.log(
-			# 	{f"dev/{dataset}/CoNLL": result_dict.get('fscore', 0.0),
-			# 	 "batch": self.train_info['global_steps']})
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score
@@ -497,7 +473,7 @@ class Experiment:
 		base_output_dict = OmegaConf.to_container(self.config)
 		perf_summary = {
 			'model_dir': path.normpath(self.config.paths.model_dir), 'best_perf': self.train_info['val_perf']}
-		logging.info("Validation performance: %.1f" % self.train_info['val_perf'])
+		logger.info("Validation performance: %.1f" % self.train_info['val_perf'])
 
 		for split in ['test']:
 			logger.info('\n')
@@ -513,8 +489,7 @@ class Experiment:
 
 				result_dict = coref_evaluation(
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
-					conll_data_dir=self.conll_data_dir
-				)
+					conll_data_dir=self.conll_data_dir)
 				self._wandb_log(result_dict, dataset=dataset, split=split)
 
 				output_dict = dict(base_output_dict)
@@ -523,7 +498,7 @@ class Experiment:
 
 				json.dump(output_dict, open(perf_file, 'w'), indent=2)
 
-				logging.info("Final performance summary at %s" % perf_file)
+				logger.info("Final performance summary at %s" % path.abspath(perf_file))
 				sys.stdout.flush()
 
 		summary_file = path.join(self.config.paths.model_dir, 'perf.json')
@@ -536,12 +511,12 @@ class Experiment:
 				os.makedirs(perf_dir)
 
 			gold_ment_str = ''
-			if self.model.use_gold_ments:
+			if self.config.model.mention_params.use_gold_ments:
 				gold_ment_str = '_gold'
-			summary_file = path.join(perf_dir, self.config.infra.job_id + gold_ment_str + ".json")
+			summary_file = path.join(perf_dir, str(self.config.infra.job_id) + gold_ment_str + ".json")
 
 		json.dump(perf_summary, open(summary_file, 'w'), indent=2)
-		logger.info("Performance summary file: %s" % summary_file)
+		logger.info("Performance summary file: %s" % path.abspath(summary_file))
 
 	def load_model(self, location: str, last_checkpoint=True) -> None:
 		"""Load model from given location.
@@ -555,16 +530,25 @@ class Experiment:
 		"""
 
 		checkpoint = torch.load(location, map_location='cpu')
+		logger.info("Loading model from %s" % path.abspath(location))
+
 		self.config = checkpoint['config']
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 
 		if self.config.model.doc_encoder.finetune:
 			# Load the document encoder params if encoder is finetuned
 			doc_encoder_dir = path.join(path.dirname(location), self.config.paths.doc_encoder_dirname)
+			logger.info("Loading document encoder from %s" % path.abspath(doc_encoder_dir))
 
 			# Load the encoder
-			self.model.mention_proposer.doc_encoder.lm_encoder.from_pretrained(
+			from transformers import AutoModel, AutoTokenizer
+			self.model.mention_proposer.doc_encoder.lm_encoder = AutoModel.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
+			self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(
+				pretrained_model_name_or_path=doc_encoder_dir)
+
+			if torch.cuda.is_available():
+				self.model.cuda()
 
 		if last_checkpoint:
 			# If resuming training, restore the optimizer state as well
@@ -609,7 +593,7 @@ class Experiment:
 			if not path.exists(doc_encoder_dir):
 				os.makedirs(doc_encoder_dir)
 
-			logger.info(f"Encoder saved at {doc_encoder_dir}")
+			logger.info(f"Encoder saved at {path.abspath(doc_encoder_dir)}")
 			# Save the encoder
 			self.model.mention_proposer.doc_encoder.lm_encoder.save_pretrained(
 				save_directory=doc_encoder_dir, save_config=True)
@@ -638,6 +622,4 @@ class Experiment:
 				save_dict['scheduler'][param_group] = self.optim_scheduler[param_group].state_dict()
 
 		torch.save(save_dict, location)
-		logging.info(f"Model saved at: {location}")
-
-
+		logger.info(f"Model saved at: {path.abspath(location)}")

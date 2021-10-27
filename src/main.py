@@ -44,9 +44,9 @@ def main(config):
 			os.makedirs(model_dir)
 
 	if config.paths.model_path is None:
-		config.paths.model_path = path.join(config.paths.model_dir, config.paths.model_filename)
-		config.paths.best_model_path = path.join(
-			config.paths.best_model_dir, config.paths.model_filename)
+		config.paths.model_path = path.abspath(path.join(config.paths.model_dir, config.paths.model_filename))
+		config.paths.best_model_path = path.abspath(path.join(
+			config.paths.best_model_dir, config.paths.model_filename))
 
 	if config.paths.best_model_path is None and (config.paths.model_path is not None):
 		config.paths.best_model_path = config.paths.model_path
@@ -60,6 +60,4 @@ def main(config):
 
 
 if __name__ == "__main__":
-	# import sys
-	# sys.argv.append(f'hydra.run.dir={os.path.expanduser("~")}')
 	main()
