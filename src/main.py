@@ -51,13 +51,17 @@ def main(config):
 	if config.paths.best_model_path is None and (config.paths.model_path is not None):
 		config.paths.best_model_path = config.paths.model_path
 
-	# Wandb Initialization
-	wandb.init(
-		id=model_name, project="Coreference", config=dict(config), resume=True,
-		notes="Thesis updates", tags="thesis",
-	)
+	if config.use_wandb:
+		# Wandb Initialization
+		wandb.init(
+			id=model_name, project="Coreference", config=dict(config), resume=True,
+			notes="Thesis updates", tags="thesis",
+		)
 	Experiment(config)
 
 
 if __name__ == "__main__":
+	import sys
+	sys.argv.append(f'hydra.run.dir={path.dirname(path.realpath(__file__))}')
+	sys.argv.append('hydra/job_logging=none')
 	main()

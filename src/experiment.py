@@ -229,7 +229,6 @@ class Experiment:
 
 		if self.train_info['num_stuck_evals'] >= self.config.trainer.patience:
 			return False
-		print(self.train_info['global_steps'], self.config.trainer.num_training_steps)
 		if self.train_info['global_steps'] >= self.config.trainer.num_training_steps:
 			return False
 
@@ -373,8 +372,10 @@ class Experiment:
 						cur_document["doc_key"], loss,
 						(torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
 					)
-					torch.cuda.reset_peak_memory_stats()
-					wandb.log({"train/loss": loss, 'batch': self.train_info['global_steps']})
+					if torch.cuda.is_available():
+						torch.cuda.reset_peak_memory_stats()
+					if self.config.use_wandb:
+						wandb.log({"train/loss": loss, 'batch': self.train_info['global_steps']})
 
 				if train_config.eval_per_k_steps and \
 							(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
@@ -403,7 +404,8 @@ class Experiment:
 
 						if rem_time < avg_eval_time:
 							logger.info('Canceling job as not much time left')
-							wandb.mark_preempting()
+							if self.config.use_wandb:
+								wandb.mark_preempting()
 							sys.exit()
 
 			# Check stopping criteria
@@ -438,7 +440,8 @@ class Experiment:
 			result_dict = coref_evaluation(
 				self.config, self.model, self.data_iter_map, dataset, conll_data_dir=self.conll_data_dir)
 			fscore_dict[dataset] = result_dict.get('fscore', 0.0)
-			self._wandb_log(result_dict, dataset=dataset, split="dev")
+			if self.config.use_wandb:
+				self._wandb_log(result_dict, dataset=dataset, split="dev")
 
 		logger.info(fscore_dict)
 		# Calculate Mean F-score
@@ -490,7 +493,8 @@ class Experiment:
 				result_dict = coref_evaluation(
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
 					conll_data_dir=self.conll_data_dir)
-				self._wandb_log(result_dict, dataset=dataset, split=split)
+				if self.config.use_wandb:
+					self._wandb_log(result_dict, dataset=dataset, split=split)
 
 				output_dict = dict(base_output_dict)
 				output_dict[f"{dataset}_{split}"] = result_dict
