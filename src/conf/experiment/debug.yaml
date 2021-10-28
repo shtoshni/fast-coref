@@ -5,7 +5,7 @@
 
 
 defaults:
-  - override /datasets: litbank
+  - override /datasets: ontonotes
   - override /trainer: train.yaml
   - override /model/doc_encoder/transformer: longformer_base
 

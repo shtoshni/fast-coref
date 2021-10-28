@@ -222,9 +222,8 @@ class EntityRankingModel(nn.Module):
 
 		if len(coref_new_list) > 0:
 			coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
-			loss_dict['total'] += coref_loss
+			loss_dict['total'] = loss_dict['total'] + coref_loss
 			loss_dict['coref'] = coref_loss
-
 		return loss_dict
 
 	def forward(self, document: Dict) -> Tuple[List, List, List, List]:

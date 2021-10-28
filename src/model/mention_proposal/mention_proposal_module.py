@@ -29,8 +29,7 @@ class MentionProposalModule(nn.Module):
 		self.doc_encoder = IndependentDocEncoder(config.doc_encoder)
 
 		# Mention proposal model
-		self._build_model(
-			hidden_size=self.doc_encoder.hidden_size)
+		self._build_model(hidden_size=self.doc_encoder.hidden_size)
 
 		self.loss_fn = nn.BCEWithLogitsLoss(reduction='sum')
 
@@ -76,6 +75,7 @@ class MentionProposalModule(nn.Module):
 			span_embs (Tensor): C x d' where d represents the span embedding dimensionality.
 				where d' is typically a multiple of d + some constant (width emebddding).
 		"""
+
 		span_emb_list = [encoded_doc[ment_starts, :], encoded_doc[ment_ends, :]]
 		# Add span width embeddings
 		span_width_indices = torch.clamp(
@@ -145,6 +145,7 @@ class MentionProposalModule(nn.Module):
 		sentence boundaries. This method could also use a constraint on not starting
 		or ending in the middle of a word.
 		"""
+
 		num_words: int = encoded_doc.shape[0]
 		sent_map: Tensor = document["sentence_map"].to(self.device)
 

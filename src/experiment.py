@@ -85,6 +85,7 @@ class Experiment:
 
 		# Print model
 		utils.print_model_info(self.model)
+		sys.stdout.flush()
 
 	def _load_data(self):
 		"""Loads and processes the training and evaluation data.
@@ -257,7 +258,7 @@ class Experiment:
 			self.scaler = None
 
 		# Optimizer for clustering params
-		self.optimizer['mem'] = torch.optim.Adam(
+		self.optimizer['mem'] = torch.optim.AdamW(
 			self.model.get_params()[1], lr=optimizer_config.init_lr, eps=1e-6)
 
 		if optimizer_config.lr_decay == 'inv':
@@ -329,21 +330,10 @@ class Experiment:
 					for key in optimizer:
 						optimizer[key].zero_grad()
 
-					if scaler is not None:
-						with torch.cuda.amp.autocast():
-							loss_dict = model.forward_training(document)
-							total_loss = loss_dict['total']
-							if total_loss is None:
-								return None
-
-							scaler.scale(total_loss).backward()
-							for key in optimizer:
-								scaler.unscale_(optimizer[key])
-					else:
-						loss_dict: Dict = model.forward_training(document)
-						total_loss = loss_dict['total']
-						if total_loss is None:
-							return None
+					loss_dict: Dict = model.forward_training(document)
+					total_loss = loss_dict['total']
+					if total_loss is None or torch.isnan(total_loss):
+						return None
 
 					# Gradient clipping
 					try:
@@ -355,18 +345,8 @@ class Experiment:
 						return None
 
 					for key in optimizer:
-						# Optimizer step
-						if scaler is not None:
-							scaler.step(optimizer[key])
-						else:
-							optimizer[key].step()
-
-						# Scheduler step
+						optimizer[key].step()
 						scheduler[key].step()
-
-					# Update scaler
-					if scaler is not None:
-						scaler.update()
 
 					return total_loss.item()
 
@@ -379,13 +359,14 @@ class Experiment:
 						cur_document["doc_key"], loss,
 						(torch.cuda.max_memory_allocated() / (1024 ** 3)) if torch.cuda.is_available() else 0.0)
 					)
+					sys.stdout.flush()
 					if torch.cuda.is_available():
 						torch.cuda.reset_peak_memory_stats()
 					if self.config.use_wandb:
 						wandb.log({"train/loss": loss, 'batch': self.train_info['global_steps']})
 
 				if train_config.eval_per_k_steps and \
-							(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
+								(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
 					fscore = self.periodic_model_eval()
 					model.train()
 					# Get elapsed time
@@ -408,7 +389,7 @@ class Experiment:
 						avg_eval_time = eval_time['total_time'] / eval_time['num_evals']
 						rem_time = self.config.infra.job_time - eval_time['total_time']
 						logger.info("Average eval time: %.2f mins, Remaining time: %.2f mins"
-						             % (avg_eval_time / 60, rem_time / 60))
+						            % (avg_eval_time / 60, rem_time / 60))
 
 						if rem_time < avg_eval_time:
 							logger.info('Canceling job as not much time left')

@@ -11,7 +11,7 @@ defaults:
 
 metrics: ['MUC', 'Bcub', 'CEAFE']
 keep_singletons: True
-seed: 0
+seed: 10
 train: True
 eval_all: False
 use_wandb: True
