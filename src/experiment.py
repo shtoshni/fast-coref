@@ -335,12 +335,13 @@ class Experiment:
 					if total_loss is None or torch.isnan(total_loss):
 						return None
 
+					total_loss.backward()
+
 					# Gradient clipping
 					try:
-						torch.nn.utils.clip_grad_norm_(
-							encoder_params, optimizer_config.max_gradient_norm, error_if_nonfinite=True)
-						torch.nn.utils.clip_grad_norm_(
-							task_params, optimizer_config.max_gradient_norm, error_if_nonfinite=True)
+						for param_group in [encoder_params, task_params]:
+							torch.nn.utils.clip_grad_norm_(
+								param_group, optimizer_config.max_gradient_norm, error_if_nonfinite=True)
 					except RuntimeError:
 						return None
 

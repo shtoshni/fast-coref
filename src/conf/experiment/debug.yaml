@@ -10,10 +10,10 @@ defaults:
   - override /model/doc_encoder/transformer: longformer_base
 
 trainer:
-  log_frequency: 10
+  log_frequency: 25
   max_evals: 5
   patience: 2
-  eval_per_k_steps: 20
+  eval_per_k_steps: 100
 
 use_wandb: False
 
