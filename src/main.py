@@ -18,6 +18,7 @@ def get_model_name(config):
 	encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
 	hash_obj = hashlib.md5()
 	hash_obj.update(encoded)
+	hash_obj.update({'seed': config.seed})
 
 	model_hash = str(hash_obj.hexdigest())
 	if len(config.datasets) > 1:
