@@ -347,8 +347,13 @@ class Experiment:
 							return None
 
 					# Gradient clipping
-					torch.nn.utils.clip_grad_norm_(encoder_params, optimizer_config.max_gradient_norm)
-					torch.nn.utils.clip_grad_norm_(task_params, optimizer_config.max_gradient_norm)
+					try:
+						torch.nn.utils.clip_grad_norm_(
+							encoder_params, optimizer_config.max_gradient_norm, error_if_nonfinite=True)
+						torch.nn.utils.clip_grad_norm_(
+							task_params, optimizer_config.max_gradient_norm, error_if_nonfinite=True)
+					except RuntimeError:
+						return None
 
 					for key in optimizer:
 						# Optimizer step
@@ -367,6 +372,8 @@ class Experiment:
 					return total_loss.item()
 
 				loss = handle_example(cur_document)
+				if loss is None:
+					continue
 
 				if self.train_info['global_steps'] % train_config.log_frequency == 0:
 					logger.info('{} {:.3f} Max mem {:.3f} GB'.format(
@@ -379,6 +386,7 @@ class Experiment:
 				if train_config.eval_per_k_steps and \
 							(self.train_info['global_steps'] % train_config.eval_per_k_steps == 0):
 					fscore = self.periodic_model_eval()
+					model.train()
 					# Get elapsed time
 					elapsed_time = time.time() - start_time
 
