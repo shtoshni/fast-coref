@@ -22,7 +22,7 @@ class BaseDocEncoder(nn.Module):
 
         self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
             model_str, output_hidden_states=False,
-            gradient_checkpointing=gradient_checkpointing)
+            gradient_checkpointing=gradient_checkpointing, add_pooling_layer=False)
 
         self.tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(model_str, use_fast=True)
         if config.add_speaker_tokens:

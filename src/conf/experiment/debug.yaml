@@ -15,7 +15,5 @@ trainer:
   patience: 2
   eval_per_k_steps: 20
 
-#model:
-#  doc_encoder:
-#    transformer: lonformer_base
+use_wandb: False
 

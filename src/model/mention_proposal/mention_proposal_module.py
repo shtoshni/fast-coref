@@ -80,7 +80,7 @@ class MentionProposalModule(nn.Module):
 		# Add span width embeddings
 		span_width_indices = torch.clamp(
 			ment_ends - ment_starts, max=self.config.mention_params.max_span_width - 1)
-		span_width_embs = self.span_width_embeddings(span_width_indices)
+		span_width_embs = self.drop_module(self.span_width_embeddings(span_width_indices))
 		span_emb_list.append(span_width_embs)
 
 		if self.config.mention_params.ment_emb == 'attn':
@@ -98,7 +98,7 @@ class MentionProposalModule(nn.Module):
 			attention_term = torch.matmul(mention_word_attn, encoded_doc)  # K x H
 			span_emb_list.append(attention_term)
 
-		span_embs = self.drop_module(torch.cat(span_emb_list, dim=1))
+		span_embs = torch.cat(span_emb_list, dim=1)
 		return span_embs
 
 	def get_mention_width_scores(

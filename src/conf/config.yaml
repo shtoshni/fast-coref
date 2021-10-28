@@ -14,16 +14,13 @@ keep_singletons: True
 seed: 0
 train: True
 eval_all: False
-
-run_dir: ${hydra:runtime.cwd}
-work_dir: ${hydra:runtime.cwd}
-
+use_wandb: True
 
 paths:
-  resource_dir: ${infra.work_dir}/../coref_resources
+  resource_dir: ${infra.work_dir}/../../coref_resources
   base_data_dir: ${paths.resource_dir}/data
   conll_scorer: ${paths.resource_dir}/reference-coreference-scorers/scorer.pl
-  base_model_dir: ${infra.work_dir}/models
+  base_model_dir: ${infra.work_dir}/../models
   model_dir: null
   best_model_dir: null
   model_filename: 'model.pth'
