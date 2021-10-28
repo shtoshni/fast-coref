@@ -16,9 +16,10 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 def get_model_name(config):
 	masked_copy = OmegaConf.masked_copy(config, ['datasets', 'model', 'trainer', 'optimizer'])
 	encoded = json.dumps(OmegaConf.to_container(masked_copy), sort_keys=True).encode()
+	# encoded['seed']=
 	hash_obj = hashlib.md5()
 	hash_obj.update(encoded)
-	hash_obj.update({'seed': config.seed})
+	hash_obj.update(f'seed: {config.seed}'.encode())
 
 	model_hash = str(hash_obj.hexdigest())
 	if len(config.datasets) > 1:
