@@ -15,6 +15,7 @@ defaults:
 trainer:
   log_frequency: 250
   max_evals: 30
+  patience: 10
 
 model:
   doc_encoder:
