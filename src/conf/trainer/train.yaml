@@ -1,6 +1,6 @@
 dropout_rate: 0.3
 label_smoothing_wt: 0.0
-ment_loss: 'topk'
+ment_loss: 'all'
 normalize_loss: False
 max_evals: 20
 to_save_model: True
