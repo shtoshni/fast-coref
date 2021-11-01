@@ -258,7 +258,7 @@ class Experiment:
 			self.scaler = None
 
 		# Optimizer for clustering params
-		self.optimizer['mem'] = torch.optim.AdamW(
+		self.optimizer['mem'] = torch.optim.Adam(
 			self.model.get_params()[1], lr=optimizer_config.init_lr, eps=1e-6)
 
 		if optimizer_config.lr_decay == 'inv':
