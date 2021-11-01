@@ -16,6 +16,7 @@ trainer:
   log_frequency: 500
   max_evals: 30
   eval_per_k_steps: 5000
+  patience: 10
 
 
 datasets:

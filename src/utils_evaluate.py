@@ -44,6 +44,7 @@ def full_coref_evaluation(
 
 	dataset_config: DictConfig = config.datasets[dataset]
 	cluster_threshold: int = dataset_config['cluster_threshold']
+	logger.info(f"Dataset: {dataset}, Cluster Threshold: {cluster_threshold}")
 
 	log_dir = path.join(config.paths.model_dir, dataset)
 	if not path.exists(log_dir):
