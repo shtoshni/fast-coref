@@ -2,4 +2,4 @@ name: 'longformer'
 model_size: 'base'
 model_str: 'allenai/longformer-base-4096'
 max_encoder_segment_len: 4096
-max_segment_len: 2048
+max_segment_len: 4096

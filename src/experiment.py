@@ -314,7 +314,9 @@ class Experiment:
 				np.random.shuffle(dataset_train_data)
 				if self.num_train_docs_map.get(dataset, None) is not None:
 					# Subsampling the data - This is useful in joint training
-					train_data += dataset_train_data[:self.num_train_docs_map[dataset]]
+					logger.info(f"{dataset}: Subsampled {self.num_train_docs_map.get(dataset)}")
+					random_indices = np.random.choice(len(dataset_train_data), self.num_train_docs_map.get(dataset))
+					train_data += [dataset_train_data[idx] for idx in random_indices]
 				else:
 					train_data += dataset_train_data
 
