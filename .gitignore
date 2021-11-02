@@ -9,3 +9,5 @@ resources/
 outputs/
 .mypy_cache/
 slurm_scripts/
+wandb/
+.hydra/
