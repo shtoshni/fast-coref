@@ -133,6 +133,7 @@ def full_coref_evaluation(
 				path_exists_bool = False
 
 			if final_eval and is_canonical and path_exists_bool:
+				logger.info("\n\nUsing CoNLL scorer")
 				gold_path = path.join(conll_data_dir[dataset], f'{split}.conll')
 				prediction_file = path.join(log_dir, f'{split}.conll')
 				conll_results = evaluate_conll(
@@ -149,12 +150,12 @@ def full_coref_evaluation(
 				logger.info(
 					"(CoNLL) F-score : %.1f, MUC: %.1f, Bcub: %.1f, CEAFE: %.1f"
 					% (average_f1, conll_results["muc"]["f"], conll_results['bcub']["f"], conll_results['ceafe']["f"]))
-				logger.info("Prediction file: %s" % prediction_file)
+				logger.info("Prediction file: %s" % path.abspath(prediction_file))
 		except AttributeError:
 			pass
 
 		logger.info("Oracle F-score: %.3f" % oracle_evaluator.get_prf()[2])
-		logger.info(log_file)
+		logger.info(path.abspath(log_file))
 		logger.handlers[0].flush()
 
 	logger.info("Inference time: %.2f" % inference_time)
@@ -249,7 +250,6 @@ def targeted_coref_evaluation(
 	if dataset == 'wsc':
 		result_dict = {'fscore': (counter['corr'] * 100) / counter['total']}
 		logger.info('Accuracy: %.1f' % result_dict['fscore'])
-		# print(counter)
 		logger.info('Span not found: %.1f%%' % ((counter['span_not_found'] * 100) / counter['total']))
 	elif dataset == 'gap':
 		prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])

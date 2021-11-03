@@ -221,7 +221,7 @@ class Experiment:
 		"""Check if training is done or remaining.
 
 		There are two cases where we don't resume training:
-		(a) The dev performance has not improved for the allowed patience parameter.
+		(a) The dev performance has not improved for the allowed patience parameter number of evaluations.
 		(b) Number of gradient updates is already >= Total training steps.
 
 		Returns:
