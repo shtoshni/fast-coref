@@ -119,7 +119,7 @@ class Experiment:
 			if singleton_file is not None:
 				singleton_file = path.join(base_data_dir, singleton_file)
 				if path.exists(singleton_file):
-					logger.info(f"Singleton fi`le found: {singleton_file}")
+					logger.info(f"Singleton file found: {singleton_file}")
 
 			# Data directory is a function of dataset name and tokenizer used
 			data_dir = path.join(path.join(base_data_dir, dataset_name), model_name)

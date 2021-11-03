@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 from model.mention_proposal import MentionProposalModule
-from pytorch_utils.label_smoothing import LabelSmoothingLoss
 from model.utils import get_gt_actions
 from model.memory.entity_memory import EntityMemory
 
@@ -57,12 +56,7 @@ class EntityRankingModel(nn.Module):
 		self.memory_net = EntityMemory(
 			config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
-		if self.train_config.label_smoothing_wt > 0:
-			self.coref_loss_fn = LabelSmoothingLoss(smoothing=self.train_config.label_smoothing_wt, dim=0)
-			logger.info("Using label smoothing for coreference loss")
-		else:
-			self.coref_loss_fn = nn.CrossEntropyLoss()
-			logger.info("Using simple cross-entropy loss")
+		self.coref_loss_fn = nn.CrossEntropyLoss(label_smoothing=self.train_config.label_smoothing_wt)
 
 	@property
 	def device(self) -> torch.device:
@@ -168,15 +162,7 @@ class EntityRankingModel(nn.Module):
 				continue
 
 			target = torch.tensor([gt_idx], device=self.device)
-			weight = torch.ones_like(action_prob_list[counter], device=self.device)
-
-			if self.train_config.label_smoothing_wt > 0:
-				# Label smoothing loss
-				coref_loss += self.coref_loss_fn(pred=action_prob_list[counter], target=target, weight=weight)
-			else:
-				# Simple cross-entropy loss
-				coref_loss += self.coref_loss_fn(torch.unsqueeze(action_prob_list[counter], dim=0), target)
-
+			coref_loss += self.coref_loss_fn(torch.unsqueeze(action_prob_list[counter], dim=0), target)
 			counter += 1
 
 		return coref_loss
