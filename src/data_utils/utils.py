@@ -46,7 +46,7 @@ def load_dataset(
 	        "test": test_data[:num_test_docs]}
 
 
-def load_eval_dataset(data_dir: str, num_test_docs: int, max_segment_len: int = 2048) -> Dict:
+def load_eval_dataset(data_dir: str, num_test_docs: int, max_segment_len: int) -> Dict:
 	jsonl_file = get_data_file(data_dir, "test", max_segment_len)
 
 	split_data = []

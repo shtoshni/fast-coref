@@ -255,7 +255,7 @@ def targeted_coref_evaluation(
 		prec = counter['true_positive'] / (counter['true_positive'] + counter['false_positive'])
 		recall = counter['true_positive'] / (counter['true_positive'] + counter['false_negative'])
 
-		result_dict['prec'], result_dict['recall'] = prec * 100, recall * 1000
+		result_dict['prec'], result_dict['recall'] = prec * 100, recall * 100
 		if prec and recall:
 			result_dict = {'fscore': (2 * prec * recall * 100) / (prec + recall)}
 
