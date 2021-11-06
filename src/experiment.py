@@ -155,8 +155,8 @@ class Experiment:
 				self.num_train_docs_map[dataset_name] = num_train_docs
 				raw_data_map[dataset_name] = load_dataset(
 					data_dir, singleton_file=singleton_file,
-					num_train_docs=num_train_docs, num_dev_docs=num_dev_docs,
-					num_test_docs=num_test_docs, max_segment_len=max_segment_len,
+					num_dev_docs=num_dev_docs, num_test_docs=num_test_docs,
+					max_segment_len=max_segment_len,
 				)
 
 		# Tensorize data
