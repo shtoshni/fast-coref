@@ -1,0 +1,8 @@
+preco:
+  name: "PreCo"
+  cluster_threshold: 1
+  canonical_cluster_threshold: 1
+  targeted_eval: False
+  num_train_docs: 36120
+  num_dev_docs: 500
+  num_test_docs: 500

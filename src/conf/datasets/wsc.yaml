@@ -1,0 +1,4 @@
+wsc:
+  name: "Winograd Schema Challenge"
+  targeted_eval: True
+  num_test_docs: 271

@@ -1,0 +1,17 @@
+# @package _global_
+
+# Vanilla preco configuration
+
+# Model name in CRAC 2021: longdoc PC
+
+defaults:
+  - override /datasets: preco
+  - override /trainer: train.yaml
+
+trainer:
+  log_frequency: 500
+  max_evals: 30
+  patience: 10
+  eval_per_k_steps: 5000
+
+

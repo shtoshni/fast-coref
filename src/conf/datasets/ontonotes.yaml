@@ -1,0 +1,14 @@
+ontonotes:
+  name: "OntoNotes"
+  cluster_threshold: 2  # Singletons are ignored for evaluation (also not annotated)
+  canonical_cluster_threshold: 2
+  targeted_eval: False
+  num_train_docs: 2802
+  num_dev_docs: 343
+  num_test_docs: 348
+  has_conll: True
+  # OntoNotes specific attributes
+#  use_genre_feature: False  # Whether to use document genre as a feature or not
+#  default_genre: "nw"
+#  genres: [ "bc", "bn", "mz", "nw", "pt", "tc", "wb" ]
+  singleton_file: null  # File path with pseudo-singletons

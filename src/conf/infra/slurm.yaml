@@ -1,0 +1,10 @@
+is_local: False
+job_time: 14280
+job_id: null
+work_dir: "./"
+
+
+#hydra:
+#  run:
+#    dir:
+#      /share/data/speech/shtoshni/research/fast-coref/slurm_scripts/thesis/${job_id}.log

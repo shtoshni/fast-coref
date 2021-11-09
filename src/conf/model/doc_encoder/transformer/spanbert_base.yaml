@@ -1,0 +1,5 @@
+name: 'spanbert'
+model_size: 'base'
+model_str: 'shtoshni/spanbert_coreference_base'
+max_encoder_segment_len: 512
+max_segment_len: 512

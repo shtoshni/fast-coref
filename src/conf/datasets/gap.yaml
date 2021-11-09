@@ -1,0 +1,4 @@
+gap:
+  name: "Gendered Ambiguous Pronoun (GAP)"
+  targeted_eval: True  # GAP only evaluates for pronoun-person name (NP) pairs
+  num_test_docs: 2000

@@ -1,0 +1,3 @@
+name: learned
+max_ents: 20
+eval_max_ents: 20

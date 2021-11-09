@@ -1,0 +1,23 @@
+# @package _global_
+
+# This configuration trains ontonotes using all the upstream features
+# i.e. speaker information and genre information
+
+# Model name in CRAC 2021: longdoc^{S, G} ON
+
+
+defaults:
+  - override /datasets: ontonotes
+  - override /trainer: train.yaml
+  - override /model: model.yaml
+
+trainer:
+  log_frequency: 250
+  patience: 10
+  eval_per_k_steps: 5000
+
+model:
+  metadata_params:
+    use_genre_feature: True
+  doc_encoder:
+    add_speaker_tokens: True

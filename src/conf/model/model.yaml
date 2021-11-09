@@ -1,0 +1,22 @@
+defaults:
+ - doc_encoder: transformer_encoder
+ - memory: memory
+
+mention_params:
+  max_span_width: 20
+  ment_emb: attn
+  use_gold_ments: false
+  use_topk: false
+  top_span_ratio: 0.4
+  emb_size: 20
+  mlp_size: 3000
+  mlp_depth: 1
+  ment_emb_to_size_factor:
+    attn: 3
+    endpoint: 2
+    max: 1
+
+metadata_params:
+  use_genre_feature: False
+  default_genre: "nw"
+  genres: [ "bc", "bn", "mz", "nw", "pt", "tc", "wb" ]

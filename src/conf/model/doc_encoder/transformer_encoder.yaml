@@ -1,0 +1,10 @@
+defaults:
+  - transformer: longformer_large
+
+chunking: independent
+finetune: true  # Add logic of finetuning depending on the training logic
+add_speaker_tokens: false  # Change this value depending on the dataset
+speaker_start: '[SPEAKER_START]'
+speaker_end: '[SPEAKER_END]'
+
+

@@ -1,0 +1,17 @@
+# @package _global_
+
+# Vanilla ontonotes configuration which doesn't assume any upstream features
+# of speaker and document genre
+
+# Model name in CRAC 2021: longdoc ON
+
+defaults:
+  - override /datasets: ontonotes
+  - override /trainer: train.yaml
+
+trainer:
+  log_frequency: 250
+  patience: 10
+  eval_per_k_steps: 5000
+
+

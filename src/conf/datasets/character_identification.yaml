@@ -1,0 +1,8 @@
+character_identification:
+  name: "Character Identification"
+  cluster_threshold: 1
+  canonical_cluster_threshold: 1
+  targeted_eval: False
+  num_train_docs: 987
+  num_dev_docs: 122
+  num_test_docs: 192

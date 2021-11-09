@@ -1,0 +1,1 @@
+from model.document_encoder.independent import IndependentDocEncoder

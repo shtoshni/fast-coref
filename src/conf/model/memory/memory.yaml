@@ -1,0 +1,9 @@
+defaults:
+ - mem_type: unbounded
+
+emb_size: 20
+mlp_size: 3000
+mlp_depth: 1
+sim_func: hadamard
+entity_rep: wt_avg
+num_feats: 2

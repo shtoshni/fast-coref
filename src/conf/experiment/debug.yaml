@@ -1,0 +1,19 @@
+# @package _global_
+
+# Debug configuration
+# Use base model
+
+
+defaults:
+  - override /datasets: litbank
+  - override /trainer: train.yaml
+  - override /model/doc_encoder/transformer: longformer_base
+
+trainer:
+  log_frequency: 25
+  max_evals: 5
+  patience: 2
+  eval_per_k_steps: 100
+
+use_wandb: False
+

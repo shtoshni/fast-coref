@@ -1,0 +1,8 @@
+is_local: True
+work_dir: "./"
+
+
+#hydra:
+#  run:
+#    dir:
+#      "~/Research/fast-coref/models"

@@ -1,163 +1,111 @@
-from os import path
-from collections import Counter, defaultdict
-
-import xml
 import xml.etree.ElementTree as ET
-
-import re
-import os
-import sys
 import json
+import numpy as np
 
-from coref_utils import conll
 from os import path
-from transformers import LongformerTokenizerFast
-from data_processing.utils import flatten
+from data_processing.utils import parse_args
+from data_processing.process_gap import GAPDocumentState, search_span
 
 TOTAL_INSTANCES = 273
 
 
-class DocumentState:
-    def __init__(self, key):
-        self.doc_key = key
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.info = []
-        self.segments = []
-        self.subtoken_map = []
-        self.sentence_map = []
-        self.pronouns = []
-        self.clusters = []
-        self.segment_info = []
+def minimize_split(args, split="test"):
+	tokenizer = args.tokenizer
 
-    def finalize(self):
-        all_mentions = flatten(self.clusters)
-        # print(all_mentions)
-        num_words = len(flatten(self.segments))
-        sentence_map = [0] * num_words
-        assert num_words == len(self.subtoken_map), (num_words, len(self.subtoken_map))
-        return {
-            "doc_key": self.doc_key,
-            "sentences": self.segments,
-            "str_doc": self.tokens,
-            "clusters": self.clusters,
-            'sentence_map': sentence_map,
-            "subtoken_map": self.subtoken_map,
-        }
+	input_path = path.join(args.input_dir, "WSCollection.xml")
+	output_path = path.join(args.output_dir, "test.jsonlines".format(split))
+	not_found_count = 0
+	instances_processed = 0
 
+	tree = ET.parse(input_path)
+	root = tree.getroot()
 
-def search_span(word_list, token_list):
-    for start_idx in range(0, len(word_list) - len(token_list) + 1):
-        match = start_idx
-        for token1, token2 in zip(word_list[start_idx: start_idx + len(token_list)], token_list):
-            if token1 != token2:
-                match = -1
-                break
+	prefixes = []
+	pronouns = []
+	continuations = []
 
-        #         print(word_list, token_list, match)
+	answers = []
+	correct_answers = []
 
-        if match == -1:
-            continue
-        else:
-            return match
+	with open(output_path, 'w') as out_f:
+		num_tokens_list = []
+		ment_len_list = []
 
-    return -1
+		for elem in list(root)[:TOTAL_INSTANCES]:
+			for children in list(elem.iter('txt1')):
+				prefix = children.text.strip().replace('\n', ' ')
+				prefixes.append(prefix)
 
+			for children in list(elem.iter('pron')):
+				pronouns.append(children.text.strip())
 
-def minimize_split(input_dir, output_dir, split="test"):
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+			for children in list(elem.iter('txt2')):
+				continuations.append(children.text.strip())
 
-    input_path = path.join(input_dir, "WSCollection.xml")
-    output_path = path.join(output_dir, "test.jsonlines".format(split))
-    not_found_count = 0
-    instances_processed = 0
+			for children in list(elem.iter('answer')):
+				answers.append(children.text.strip())
 
-    tree = ET.parse(input_path)
-    root = tree.getroot()
+			for children in list(elem.iter('correctAnswer')):
+				correct_answers.append(children.text.strip()[0])
 
-    prefixes = []
-    pronouns = []
-    continuations = []
+		for idx, prefix in enumerate(prefixes):
+			answer1 = answers[idx * 2]
+			answer2 = answers[idx * 2 + 1]
 
-    answers = []
-    correct_answers = []
+			text = f'{prefix} {pronouns[idx * 2]} {continuations[idx]}'
 
-    with open(output_path, 'w') as out_f:
-        for elem in list(root)[:TOTAL_INSTANCES]:
-            for children in list(elem.iter('txt1')):
-                prefixes.append(children.text.strip().replace('\n', ' '))
+			word_list = tokenizer.tokenize(prefix)
+			prefix_idx = len(word_list)
+			word_list += tokenizer.tokenize(pronouns[idx * 2])
 
-            for children in list(elem.iter('pron')):
-                pronouns.append(children.text.strip())
+			pronoun_boundary = [prefix_idx, len(word_list) - 1]
+			word_list += tokenizer.tokenize(continuations[idx])
 
-            for children in list(elem.iter('txt2')):
-                continuations.append(children.text.strip())
+			answer_boundaries = []
 
-            for children in list(elem.iter('answer')):
-                answers.append(children.text.strip())
+			for answer in [answer1, answer2]:
+				for span in [answer, answer.lower(), answer.capitalize()]:
+					span_tokens = tokenizer.tokenize(span)
+					found = search_span(word_list, span_tokens)
+					if found != -1:
+						answer_boundaries.append([found, found + len(span_tokens) - 1])
+						break
 
-            for children in list(elem.iter('correctAnswer')):
-                correct_answers.append(children.text.strip()[0])
+				if found == -1:
+					print(text, answer)
+					not_found_count += 1
 
-        for idx, prefix in enumerate(prefixes):
-            answer1 = answers[idx * 2]
-            answer2 = answers[idx * 2 + 1]
+			if len(answer_boundaries) == 2:
+				document = GAPDocumentState(f'wsc_{idx}')
+				num_tokens_list.append(len(text.split()))
 
-            text = f'{prefix} {pronouns[idx * 2]} {continuations[idx]}'
-            word_list = tokenizer.tokenize(prefix)
-            prefix_idx = len(word_list)
-            word_list += tokenizer.tokenize(pronouns[idx * 2])
+				ment_len_list.extend([1, len(answer1.split()), len(answer2.split())])
 
-            pronoun_boundary = [prefix_idx, len(word_list) - 1]
-            word_list += tokenizer.tokenize(continuations[idx])
+				correct_answer = correct_answers[idx]
+				assert (correct_answer in ['A', 'B'])
 
-            answer_boundaries = []
+				if correct_answer == 'A':
+					document.a_label = 1
+				else:
+					document.b_label = 1
 
-            for answer in [answer1, answer2]:
-                for span in [answer, answer.lower(), answer.capitalize()]:
-                    span_tokens = tokenizer.tokenize(span)
-                    found = search_span(word_list, span_tokens)
-                    if found != -1:
-                        answer_boundaries.append([[found, found + len(span_tokens) - 1]])
-                        break
+				document.tokens = word_list
+				document.segments = [tokenizer.convert_tokens_to_ids(word_list)]
+				document.subtoken_map = list(range(len(word_list)))
 
-                if found == -1:
-                    print(text, answer)
-                    not_found_count += 1
+				document.pronoun_span = pronoun_boundary
+				document.a_span = answer_boundaries[0]
+				document.b_span = answer_boundaries[1]
 
-            import copy
-            clusters = copy.deepcopy(answer_boundaries)
-            if len(answer_boundaries) == 2:
-                correct_answer = correct_answers[idx]
-                assert (correct_answer in ['A', 'B'])
+				doc_dict = document.finalize()
+				instances_processed += 1
+				out_f.write(json.dumps(doc_dict) + "\n")
 
-                if correct_answer == 'A':
-                    cluster_idx = 0
-                else:
-                    cluster_idx = 1
-
-                clusters[cluster_idx].append(pronoun_boundary)
-                clusters[cluster_idx] = sorted(clusters[cluster_idx], key=lambda x: x[0])
-
-                document = DocumentState(f'wsc_{idx}')
-                document.clusters = clusters
-                document.tokens = word_list
-                document.segments = [tokenizer.convert_tokens_to_ids(word_list)]
-                document.subtoken_map = list(range(len(word_list)))
-
-                doc_dict = document.finalize()
-                instances_processed += 1
-                out_f.write(json.dumps(doc_dict) + "\n")
-
-    print("Number of instances processed:", instances_processed)
-    print(output_path)
+	print("Number of instances processed:", instances_processed)
+	print(f"Number of tokens per doc: {np.mean(num_tokens_list):.1f}")
+	print(f"Avg, mention length: {np.mean(ment_len_list):.1f}")
+	print(output_path)
 
 
 if __name__ == "__main__":
-    input_dir = sys.argv[1]
-    output_dir = sys.argv[2]
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    minimize_split(input_dir, output_dir)
+	minimize_split(parse_args())

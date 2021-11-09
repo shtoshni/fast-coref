@@ -1,0 +1,7 @@
+quizbowl:
+  name: "QuizBowl"
+  cluster_threshold: 1
+  canonical_cluster_threshold: 1
+  targeted_eval: False
+  num_test_docs: 400
+  has_conll: True
