@@ -84,15 +84,11 @@ def post_tokenization_processing(document_state, subword_tokenizer, max_segment_
 	document_state.sent_len_list = sent_len_list
 	document_state.segments_indices = document_state.segments
 
-	# tensorizer = TensorizeDataset(subword_tokenizer)
-	# return tensorizer.tensorize_instance_independent(document_state.finalize(), training=False)
-
 	# # Tensorize sentence - Streaming coreference is done one window at a time, so no padding is required
 	tensorized_sent = [torch.unsqueeze(
 		torch.tensor([subword_tokenizer.cls_token_id] + sent + [subword_tokenizer.sep_token_id]), dim=0)
 		for sent in document_state.segments]
 	document_state.tensorized_sent = tensorized_sent
-	print(subword_tokenizer.convert_ids_to_tokens(document_state.segments[0]))
 	return document_state.finalize()
 
 

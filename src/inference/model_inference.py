@@ -80,12 +80,12 @@ class Inference:
 
 
 if __name__ == '__main__':
-	model_str = "/home/shtoshni/Research/fast-coref/models/ontonotes_best"
+	model_str = "/home/shtoshni/Research/fast-coref/models/joint_best"
 	model = Inference(model_str)
+
+	# doc = " ".join(open("/home/shtoshni/Research/coref_resources/data/ccarol/doc.txt").readlines())
 	doc = "The practice of referring to Voldemort as \"He Who Must Not Be Named\" might have begun when he used a " \
 	      "Taboo. This is, however, unlikely because Dumbledore encouraged using his proper name so as to not fear " \
 	      "the name. If saying the Dark Lord’s name would have endangered people, he would not have encouraged it."
-	# doc = " Kimberly and Jennifer are friends . The former is a teacher . "
 	output_dict = model.perform_coreference(doc)
 	print(output_dict["clusters"])
-	# print(output_dict)
