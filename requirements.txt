@@ -11,7 +11,7 @@ attrs==19.3.0
 backcall @ file:///home/ktietz/src/ci/backcall_1611930011877/work
 binaryornot==0.4.4
 bitarray @ file:///tmp/build/80754af9/bitarray_1598884921708/work
-bleach==3.1.5
+bleach==4.1.0
 blinker==1.4
 blis==0.7.4
 boto3==1.17.28
@@ -56,7 +56,7 @@ glcontext==2.3.3
 google-auth @ file:///tmp/build/80754af9/google-auth_1616008050444/work
 google-auth-oauthlib==0.4.2
 grpcio==1.36.0
-huggingface-hub==0.0.19
+huggingface-hub==0.0.2
 hydra-core==1.1.1
 idna @ file:///home/linux1/recipes/ci/idna_1610986105248/work
 importlib-metadata==1.6.1
@@ -109,7 +109,7 @@ nest-asyncio @ file:///tmp/build/80754af9/nest-asyncio_1613680548246/work
 networkx==2.5.1
 ninja==1.10.0.post2
 nltk==3.6.5
-notebook==6.0.3
+notebook==6.4.5
 numpy==1.19.4
 oauthlib==3.1.0
 olefile==0.46
@@ -141,12 +141,12 @@ pyasn1==0.4.8
 pyasn1-modules==0.2.8
 pycairo==1.20.0
 pycparser @ file:///tmp/build/80754af9/pycparser_1594388511720/work
-pydantic==1.7.3
+pydantic==1.8.2
 pyDeprecate==0.3.0
 pydub==0.25.1
 pyecharts==1.7.1
 pyglet==1.5.15
-Pygments==2.6.1
+Pygments==2.10.0
 PyJWT==1.7.1
 PyOpenGL==3.1.5
 pyOpenSSL @ file:///tmp/build/80754af9/pyopenssl_1608057966937/work
@@ -158,7 +158,7 @@ python-dateutil @ file:///home/ktietz/src/ci/python-dateutil_1611928101742/work
 python-slugify==4.0.1
 pytorch-lightning==1.2.10
 pytz==2021.1
-PyYAML==5.3.1
+PyYAML==6.0
 pyzmq==22.0.3
 qtconsole==5.0.2
 QtPy==1.9.0
@@ -200,14 +200,14 @@ torch==1.10.0
 torchcontrib==0.0.2
 torchmetrics==0.2.0
 torchvision==0.9.1
-tornado==6.0.4
+tornado==6.1
 tqdm==4.49.0
 traitlets==4.3.3
 transformers==4.11.3
 typed-ast @ file:///tmp/build/80754af9/typed-ast_1610484547928/work
 typer==0.3.2
 typing-extensions @ file:///tmp/build/80754af9/typing_extensions_1611751222202/work
-urllib3==1.26.2
+urllib3==1.26.5
 validators==0.18.2
 wandb==0.12.4
 wasabi==0.8.2
