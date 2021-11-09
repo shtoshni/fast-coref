@@ -68,14 +68,14 @@ def basic_tokenize_doc(doc_str, basic_tokenizer):
 
 def tokenize_and_segment_doc(doc_str, subword_tokenizer, basic_tokenizer, max_segment_len=4096):
 	basic_tokenized_doc = basic_tokenize_doc(doc_str, basic_tokenizer)
-	document_state = get_tokenized_doc(basic_tokenized_doc, subword_tokenizer)
+	document_state: DocumentState = get_tokenized_doc(basic_tokenized_doc, subword_tokenizer)
 	document = post_tokenization_processing(
 		document_state, subword_tokenizer, max_segment_len=max_segment_len)
 
 	return document
 
 
-def post_tokenization_processing(document_state, subword_tokenizer, max_segment_len=4096):
+def post_tokenization_processing(document_state: DocumentState, subword_tokenizer, max_segment_len=4096):
 	split_into_segments(
 		document_state, max_segment_len, document_state.sentence_end, document_state.token_end)
 
