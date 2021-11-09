@@ -15,6 +15,8 @@ class Inference:
 		# Load model
 		checkpoint = torch.load(path.join(model_path, "model.pth"), map_location=self.device)
 		self.config = OmegaConf.create(checkpoint['config'])
+		if encoder_name is not None:
+			self.config.model.doc_encoder.transformer.model_str = encoder_name
 		self.model = EntityRankingModel(self.config.model, self.config.trainer)
 		self._load_model(checkpoint, model_path, encoder_name=encoder_name)
 
@@ -29,15 +31,14 @@ class Inference:
 			# Load the document encoder params if encoder is finetuned
 			if encoder_name is None:
 				doc_encoder_dir = path.join(model_path, self.config.paths.doc_encoder_dirname)
-			else:
-				doc_encoder_dir = encoder_name
-			# Load the encoder
-			self.model.mention_proposer.doc_encoder.lm_encoder = AutoModel.from_pretrained(
-				pretrained_model_name_or_path=doc_encoder_dir)
-			self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(
-				pretrained_model_name_or_path=doc_encoder_dir)
+			# else:
+			# 	doc_encoder_dir = encoder_name
+				# Load the encoder
+				self.model.mention_proposer.doc_encoder.lm_encoder = AutoModel.from_pretrained(
+					pretrained_model_name_or_path=doc_encoder_dir)
+				self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(
+					pretrained_model_name_or_path=doc_encoder_dir)
 
-			# print("Hello")
 			if torch.cuda.is_available():
 				self.model.cuda()
 
@@ -74,6 +75,7 @@ class Inference:
 
 if __name__ == '__main__':
 	model_str = "/home/shtoshni/Research/fast-coref/models/ontonotes_best"
+	# model = Inference(model_str)
 	model = Inference(model_str, "shtoshni/longformer_coreference_ontonotes")
 
 	# doc = " ".join(open("/home/shtoshni/Research/coref_resources/data/ccarol/doc.txt").readlines())
