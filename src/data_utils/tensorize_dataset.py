@@ -59,7 +59,7 @@ class TensorizeDataset:
 		output_dict = {"tensorized_sent": tensorized_sent,
 		               "sentences": sentences,
 		               "sent_len_list": sent_len_list,
-		               "doc_key": document["doc_key"],
+		               "doc_key": document.get("doc_key", None),
 		               "clusters": clusters,
 		               "subtoken_map": subtoken_map,
 		               "sentence_map": torch.tensor(sentence_map, device=self.device),

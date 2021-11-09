@@ -276,4 +276,4 @@ class EntityRankingModel(nn.Module):
 			pred_actions.extend(cur_pred_actions)
 
 		gt_actions = get_gt_actions(pred_mentions_list, document)  # Useful for oracle calcs
-		return pred_mentions_list,  mention_scores, gt_actions, pred_actions
+		return pred_mentions_list, mention_scores, gt_actions, pred_actions

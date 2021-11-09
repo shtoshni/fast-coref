@@ -1,112 +1,104 @@
-"""This is an adaptation of the tokenizer used for LitBank in the overlapping segments setting."""
 import torch
-from data_processing.utils import split_into_segments
+from data_processing.utils import split_into_segments, get_sentence_map
 
 
 class DocumentState:
-    def __init__(self):
-        self.sentence_end = []
-        self.token_end = []
-        self.tokens = []
-        self.subtokens = []
-        self.segments = []
-        self.subtoken_map = []
-        self.segment_subtoken_map = []
-        self.sentence_map = []
-        self.tensorized_sent = []
-        self.sent_len_list = []
-        self.part_lens = []
+	def __init__(self):
+		self.sentence_end = []
+		self.token_end = []
+		self.orig_tokens = []
+		self.tokens = []
+		self.subtokens = []
+		self.segments = []
+		self.subtoken_map = []
+		self.segment_subtoken_map = []
+		self.sentence_map = []
+		self.tensorized_sent = []
+		self.sent_len_list = []
 
-    def finalize(self):
-        subtoken_map = flatten(self.segment_subtoken_map)
-        num_words = len(flatten(self.segments))
-        assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
+	def finalize(self):
+		subtoken_map = flatten(self.segment_subtoken_map)
+		num_words = len(flatten(self.segments))
+		assert num_words == len(subtoken_map), (num_words, len(subtoken_map))
 
-        return {
-            "sentences": self.segments,
-            "sent_len_list": self.sent_len_list,
-            "tensorized_sent": self.tensorized_sent,
-            'sentence_map': torch.tensor([0] * num_words),  # Assume no sentence boundaries are specified
-            "subtoken_map": subtoken_map,
-            "part_lens": self.part_lens,
-        }
+		return {
+			"orig_tokens": self.orig_tokens,
+			"sentences": self.segments,
+			"sent_len_list": self.sent_len_list,
+			"tensorized_sent": self.tensorized_sent,
+			'sentence_map': torch.tensor(get_sentence_map(self.segments, self.sentence_end)),
+			"subtoken_map": subtoken_map,
+		}
 
 
 def flatten(l):
-    return [item for sublist in l for item in sublist]
+	return [item for sublist in l for item in sublist]
 
 
-def get_tokenized_doc(doc_str, tokenizer, document_state=None):
-    word_idx = -1
+def get_tokenized_doc(doc, subword_tokenizer):
+	document_state = DocumentState()
 
-    if document_state is None:
-        document_state = DocumentState()
-    else:
-        if len(document_state.subtoken_map):
-            word_idx = document_state.subtoken_map[-1]
+	word_idx = -1
+	for sentence in doc:
+		for word in sentence:
+			document_state.orig_tokens.append(word)
+			subtokens = subword_tokenizer.convert_tokens_to_ids(subword_tokenizer.tokenize(" " + word))
+			document_state.tokens.append(word)
+			document_state.token_end += ([False] * (len(subtokens) - 1)) + [True]
+			word_idx += 1
+			for sidx, subtoken in enumerate(subtokens):
+				document_state.subtokens.append(subtoken)
+				document_state.sentence_end.append(False)
+				document_state.subtoken_map.append(word_idx)
 
-    sentences = doc_str.split("\n")
-    # print(sentences)
-    for sentence in sentences:
-        if sentence == '':
-            continue
-        tokenized_doc = tokenizer.tokenize(sentence)
-        for idx, token in enumerate(tokenized_doc):
-            word_idx += 1
-            document_state.tokens.append(token)
-            # Subtoken and token are same
-            document_state.subtokens.append(token)
-            if idx == len(tokenized_doc) - 1:
-                # End of document
-                document_state.token_end += ([True])
-            else:
-                document_state.token_end += ([True])
+		document_state.sentence_end[-1] = True
 
-            document_state.subtoken_map.append(word_idx)
-            document_state.sentence_end.append(False)  # No info on sentence end
-
-        document_state.sentence_end[-1] = True
-
-    return document_state
+	# print(document_state.subtokens)
+	return document_state
 
 
-def tokenize_and_segment_doc(doc_str, lm_tokenizer, max_segment_len=4096):
-    document_state = get_tokenized_doc(doc_str, lm_tokenizer)
-    document = post_tokenization_processing(
-        document_state, lm_tokenizer, max_segment_len=max_segment_len)
-    return document
+def basic_tokenize_doc(doc_str, basic_tokenizer):
+	doc = []
+	for sent in basic_tokenizer(doc_str).sents:
+		wordlist = [str(word) for word in sent]
+		doc.append(wordlist)
+
+	return doc
 
 
-def tokenize_and_segment_doc_list(doc_list, lm_tokenizer, max_segment_len=4096):
-    document_state = DocumentState()
-    for doc_str in doc_list:
-        get_tokenized_doc(doc_str, lm_tokenizer, document_state=document_state)
-        document_state.part_lens.append(len(document_state.tokens))
+def tokenize_and_segment_doc(doc_str, subword_tokenizer, basic_tokenizer, max_segment_len=4096):
+	basic_tokenized_doc = basic_tokenize_doc(doc_str, basic_tokenizer)
+	document_state = get_tokenized_doc(basic_tokenized_doc, subword_tokenizer)
+	document = post_tokenization_processing(
+		document_state, subword_tokenizer, max_segment_len=max_segment_len)
 
-    document = post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=max_segment_len)
-    return document
+	return document
 
 
-def post_tokenization_processing(document_state, lm_tokenizer, max_segment_len=4096):
-    split_into_segments(
-        document_state, max_segment_len, document_state.sentence_end, document_state.token_end)
+def post_tokenization_processing(document_state, subword_tokenizer, max_segment_len=4096):
+	split_into_segments(
+		document_state, max_segment_len, document_state.sentence_end, document_state.token_end)
 
-    sentences = [lm_tokenizer.convert_tokens_to_ids(sent) for sent in document_state.segments]
-    sent_len_list = [len(sent) for sent in sentences]
-    document_state.sent_len_list = sent_len_list
-    document_state.segments_indices = sentences
+	# sentences = [lm_tokenizer.convert_tokens_to_ids(sent) for sent in document_state.segments]
+	sent_len_list = [len(sent) for sent in document_state.segments]
+	document_state.sent_len_list = sent_len_list
+	document_state.segments_indices = document_state.segments
 
-    # Tensorize sentence - Streaming is done one window at a time, so no padding required
-    tensorized_sent = [torch.unsqueeze(
-        torch.tensor([lm_tokenizer.cls_token_id] + sent + [lm_tokenizer.sep_token_id]), dim=0) for sent in sentences]
-    document_state.tensorized_sent = tensorized_sent
-    return document_state.finalize()
+	# tensorizer = TensorizeDataset(subword_tokenizer)
+	# return tensorizer.tensorize_instance_independent(document_state.finalize(), training=False)
+
+	# # Tensorize sentence - Streaming coreference is done one window at a time, so no padding is required
+	tensorized_sent = [torch.unsqueeze(
+		torch.tensor([subword_tokenizer.cls_token_id] + sent + [subword_tokenizer.sep_token_id]), dim=0)
+		for sent in document_state.segments]
+	document_state.tensorized_sent = tensorized_sent
+	print(subword_tokenizer.convert_ids_to_tokens(document_state.segments[0]))
+	return document_state.finalize()
 
 
 if __name__ == "__main__":
-    from transformers import LongformerTokenizerFast
+	from transformers import LongformerTokenizerFast
 
-    tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
-    doc = "My father’s eyes had closed upon the light of this world six months, when Ishmael opened on it."
-    print(get_tokenized_doc(doc, tokenizer))
-
+	tokenizer = LongformerTokenizerFast.from_pretrained('allenai/longformer-large-4096', add_prefix_space=True)
+	sample_doc_str = "My father’s eyes had closed upon the light of this world six months, when Ishmael opened on it."
+	print(get_tokenized_doc(sample_doc_str, tokenizer))

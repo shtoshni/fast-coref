@@ -29,7 +29,8 @@ class BaseDocEncoder(nn.Module):
             model_str, output_hidden_states=False,
             gradient_checkpointing=gradient_checkpointing, add_pooling_layer=False)
 
-        self.tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(model_str, use_fast=True)
+        self.tokenizer: PreTrainedTokenizerFast = AutoTokenizer.from_pretrained(
+            model_str, use_fast=True, add_prefix_space=True)
         if config.add_speaker_tokens:
             self.tokenizer.add_special_tokens({
                 'additional_special_tokens': [config.speaker_start, config.speaker_end]
