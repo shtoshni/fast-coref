@@ -14,7 +14,7 @@ keep_singletons: True
 seed: 45
 train: True
 eval_all: False
-use_wandb: True
+use_wandb: False
 
 paths:
   resource_dir: ${infra.work_dir}/../../coref_resources

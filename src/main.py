@@ -32,12 +32,12 @@ def get_model_name(config):
 	return model_name
 
 
-@hydra.main(config_path="conf", config_name="config")
-def main(config):
+def main_train(config):
 	if config.paths.model_name is None:
 		model_name = get_model_name(config)
 	else:
 		model_name = config.paths.model_name
+
 	config.paths.model_dir = path.join(
 		config.paths.base_model_dir, config.paths.model_name_prefix + model_name)
 	config.paths.best_model_dir = path.join(config.paths.model_dir, 'best')
@@ -61,6 +61,25 @@ def main(config):
 			notes="Thesis updates", tags="thesis",
 		)
 	Experiment(config)
+
+
+def main_eval(config):
+	if config.paths.model_dir is None:
+		raise ValueError
+
+	config.paths.best_model_dir = config.paths.model_dir
+	config.paths.best_model_path = path.abspath(path.join(
+		config.paths.best_model_dir, config.paths.model_filename))
+
+	Experiment(config)
+
+
+@hydra.main(config_path="conf", config_name="config")
+def main(config):
+	if config.train:
+		main_train(config)
+	else:
+		main_eval(config)
 
 
 if __name__ == "__main__":

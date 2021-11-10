@@ -466,8 +466,10 @@ class Experiment:
 
 		self.model.eval()
 		base_output_dict = OmegaConf.to_container(self.config)
-		perf_summary = {
-			'model_dir': path.normpath(self.config.paths.model_dir), 'best_perf': self.train_info['val_perf']}
+		perf_summary = {'best_perf': self.train_info['val_perf']}
+		if self.config.paths.model_dir:
+			perf_summary['model_dir'] = path.normpath(self.config.paths.model_dir)
+
 		logger.info("Validation performance: %.1f" % self.train_info['val_perf'])
 
 		for split in ['test']:
@@ -528,8 +530,9 @@ class Experiment:
 		checkpoint = torch.load(location, map_location='cpu')
 		logger.info("Loading model from %s" % path.abspath(location))
 
-		self.config = checkpoint['config']
+		# self.config = checkpoint['config']
 		self.model.load_state_dict(checkpoint['model'], strict=False)
+		self.train_info = checkpoint['train_info']
 
 		if self.config.model.doc_encoder.finetune:
 			# Load the document encoder params if encoder is finetuned
@@ -557,7 +560,6 @@ class Experiment:
 			if 'scaler' in checkpoint and self.scaler is not None:
 				self.scaler.load_state_dict(checkpoint['scaler'])
 
-			self.train_info = checkpoint['train_info']
 			torch.set_rng_state(checkpoint['rng_state'])
 			np.random.set_state(checkpoint['np_rng_state'])
 

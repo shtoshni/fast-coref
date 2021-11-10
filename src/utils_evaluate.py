@@ -78,7 +78,10 @@ def full_coref_evaluation(
 			inference_time += elapsed_time
 
 			coref_predictions[example["doc_key"]] = predicted_clusters
-			subtoken_maps[example["doc_key"]] = example["subtoken_map"]
+			if "orig_subtoken_map" in example:
+				subtoken_maps[example["doc_key"]] = example["orig_subtoken_map"]
+			else:
+				subtoken_maps[example["doc_key"]] = example["subtoken_map"]
 
 			total_actions += len(pred_actions)
 
@@ -136,8 +139,13 @@ def full_coref_evaluation(
 				logger.info("\n\nUsing CoNLL scorer")
 				gold_path = path.join(conll_data_dir[dataset], f'{split}.conll')
 				prediction_file = path.join(log_dir, f'{split}.conll')
+
+				print(path.abspath(gold_path))
+				print(path.abspath(prediction_file))
+				print(config.paths.conll_scorer)
+
 				conll_results = evaluate_conll(
-					config.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
+					config.paths.conll_scorer, gold_path, coref_predictions, subtoken_maps, prediction_file)
 
 				for indv_metric in config.metrics:
 					result_dict[indv_metric]['recall'] = round(conll_results[indv_metric.lower()]["r"], 1)
