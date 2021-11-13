@@ -94,14 +94,14 @@ def parse_args():
 	parser.add_argument('-output_dir', type=str, default=None, help="Output directory.")
 	parser.add_argument('-model', default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
 	                    type=str, help="Model type.")
-	parser.add_argument('-seg_len', default=2048, type=int, help="Max. segment length")
+	parser.add_argument('-seg_len', default=4096, type=int, help="Max. segment length")
 	parser.add_argument('-add_speaker', default=False, action="store_true",
 	                    help="Speaker represented in text.")
 
 	args = parser.parse_args()
 
 	if args.output_dir is None:
-		base_dir = path.dirname(args.input_dir)
+		base_dir = path.dirname(args.input_dir.rstrip("/"))
 		args.output_dir = path.join(base_dir, args.model + ("_speaker" if args.add_speaker else ''))
 
 	assert (path.exists(args.input_dir))
@@ -110,8 +110,6 @@ def parse_args():
 	print(f'Model: {args.model}, Segment length: {args.seg_len}')
 	args.model = MODEL_TO_MODEL_STR[args.model]
 	args.tokenizer = get_tokenizer(args.model)
-
-	# print(args.tokenizer.tokenize("Hello"))
 
 	if not os.path.exists(args.output_dir):
 		os.makedirs(args.output_dir)

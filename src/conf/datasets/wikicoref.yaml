@@ -4,4 +4,4 @@ wikicoref:
   canonical_cluster_threshold: 2
   targeted_eval: False
   num_test_docs: 30
-  has_conll: True
+  has_conll: False

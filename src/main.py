@@ -58,7 +58,7 @@ def main_train(config):
 		# Wandb Initialization
 		wandb.init(
 			id=model_name, project="Coreference", config=dict(config), resume=True,
-			notes="Thesis updates", tags="thesis",
+			# notes="Thesis updates", tags="thesis",
 		)
 	Experiment(config)
 
@@ -67,7 +67,12 @@ def main_eval(config):
 	if config.paths.model_dir is None:
 		raise ValueError
 
-	config.paths.best_model_dir = config.paths.model_dir
+	best_model_dir = path.join(config.paths.model_dir, "best")
+	if path.exists(best_model_dir):
+		config.paths.best_model_dir = best_model_dir
+	else:
+		config.paths.best_model_dir = config.paths.model_dir
+
 	config.paths.best_model_path = path.abspath(path.join(
 		config.paths.best_model_dir, config.paths.model_filename))
 

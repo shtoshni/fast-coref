@@ -1,0 +1,9 @@
+# @package _global_
+
+# Evaluate all models
+
+
+defaults:
+  - override /datasets: all
+
+train: False

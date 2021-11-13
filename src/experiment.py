@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 from os import path
 from collections import OrderedDict
 from transformers import get_linear_schedule_with_warmup, AdamW
+from transformers import AutoModel, AutoTokenizer
 
 from data_utils.utils import load_dataset, load_eval_dataset
 import pytorch_utils.utils as utils
@@ -38,37 +39,34 @@ class Experiment:
 		# Whether to train or not
 		self.eval_model: bool = (not self.config.train)
 
-		# Step 1 - Build model
-		self._build_model()
-
-		# Step 2 - Load Data - Data processing choices such as tokenizer will depend on the model
-		self._load_data()
-
-		# Step 3 - Load model and resume training if required
-		# Firstly initialize dictionary to track key training variables
+		# Initialize dictionary to track key training variables
 		self.train_info = {'val_perf': 0.0, 'global_steps': 0, 'num_stuck_evals': 0, 'peak_memory': 0.0}
+		# Initialize model path attributes
+		self.model_path = self.config.paths.model_path
+		self.best_model_path = self.config.paths.best_model_path
 
-		if self.eval_model:
-			# Load the best checkpoint
-			self._load_previous_checkpoint(last_checkpoint=False)
-		else:
-			# Resume training
+		if not self.eval_model:
+			# Step 1 - Initialize model
+			self._build_model()
+			# Step 2 - Load Data - Data processing choices such as tokenizer will depend on the model
+			self._load_data()
+			# Step 3 - Resume training
 			self._setup_training()
-			# Loading the checkpoint also restores the training metadata
-			self._load_previous_checkpoint(last_checkpoint=True)
+			# Step 4 - Loading the checkpoint also restores the training metadata
+			self._load_previous_checkpoint()
 
 			# All set to resume training
 			# But first check if training is remaining
 			if self._is_training_remaining():
 				self.train()
 
-		# Step 4 - Perform final evaluation
+		# Perform final evaluation
 		if path.exists(self.best_model_path):
-			self.load_model(self.best_model_path, last_checkpoint=False)
-			self.perform_final_eval()
-		elif path.exists(self.model_path):
-			logger.info("Couldn't find the best model! Using the last checkpoint!")
-			self.load_model(self.best_model_path, last_checkpoint=True)
+			# Step 1 - Initialize model
+			self._initialize_best_model()
+			# Step 2 - Load evaluation data
+			self._load_data()
+			# Step 3 - Perform evaluation
 			self.perform_final_eval()
 		else:
 			logger.info("No model accessible!")
@@ -79,7 +77,9 @@ class Experiment:
 
 		model_params: DictConfig = self.config.model
 		train_config: DictConfig = self.config.trainer
+
 		self.model = EntityRankingModel(model_config=model_params, train_config=train_config)
+
 		if torch.cuda.is_available():
 			self.model.cuda()
 
@@ -185,35 +185,19 @@ class Experiment:
 			self.config.trainer.num_training_steps = self.config.trainer.eval_per_k_steps * self.config.trainer.max_evals
 			logger.info(f"Number of training steps: {self.config.trainer.num_training_steps}")
 
-	def _load_previous_checkpoint(self, last_checkpoint=True):
-		"""Loads the last checkpoint or best checkpoint.
+	def _load_previous_checkpoint(self):
+		"""Loads the last checkpoint or best checkpoint."""
 
-		Args:
-			last_checkpoint: If true, load the last checkpoint to resume training.
-				Otherwise, load the best model for evaluation.
-				If the above two models don't exist, set the random seeds for training initialization.
-		"""
-
-		self.model_path = self.config.paths.model_path
-		self.best_model_path = self.config.paths.best_model_path
-
-		if last_checkpoint:
-			# Resume training
-			if path.exists(self.model_path):
-				self.load_model(self.model_path, last_checkpoint=last_checkpoint)
-			else:
-				# Starting training
-				torch.random.manual_seed(self.config.seed)
-				np.random.seed(self.config.seed)
-				random.seed(self.config.seed)
+		# Resume training
+		if path.exists(self.model_path):
+			self.load_model(self.model_path, last_checkpoint=True)
 		else:
-			# Load best model
-			if path.exists(self.best_model_path):
-				self.load_model(self.best_model_path, last_checkpoint=last_checkpoint)
-			else:
-				raise IOError(f"Best model path at {self.best_model_path} not found")
+			# Starting training
+			torch.random.manual_seed(self.config.seed)
+			np.random.seed(self.config.seed)
+			random.seed(self.config.seed)
 
-			logger.info("\nModel loaded\n")
+			logger.info("Model loaded\n")
 			utils.print_model_info(self.model)
 			sys.stdout.flush()
 
@@ -482,7 +466,7 @@ class Experiment:
 					os.makedirs(dataset_dir)
 				perf_file = path.join(dataset_dir, "perf.json")
 
-				logger.info('\n%s\n' % self.config.datasets[dataset].name)
+				logger.info('Dataset: %s\n' % self.config.datasets[dataset].name)
 
 				result_dict = coref_evaluation(
 					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
@@ -516,6 +500,36 @@ class Experiment:
 		json.dump(perf_summary, open(summary_file, 'w'), indent=2)
 		logger.info("Performance summary file: %s" % path.abspath(summary_file))
 
+	def _initialize_best_model(self):
+		checkpoint = torch.load(self.best_model_path, map_location='cpu')
+		config = checkpoint['config']
+		# Copying the saved model config to current config is very important to avoid any issues while
+		# loading the saved model. To give an example, model might be saved with the speaker tags
+		# (training: experiment=ontonotes_speaker)
+		# but the evaluation config might lack this detail (eval: experiment=eval_all)
+		# However, overriding the encoder is possible -- This method is a bit hacky but allows for overriding the pretrained
+		# transformer model from command line.
+		if self.config.override_encoder:
+			model_config = config.model
+			model_config.doc_encoder.transformer = self.config.model.doc_encoder.transformer
+
+		self.config.model = config.model
+
+		self.train_info = checkpoint['train_info']
+
+		if self.config.model.doc_encoder.finetune:
+			# Load the document encoder params if encoder is finetuned
+			doc_encoder_dir = path.join(path.dirname(self.best_model_path), self.config.paths.doc_encoder_dirname)
+			if path.exists(doc_encoder_dir):
+				logger.info("Loading document encoder from %s" % path.abspath(doc_encoder_dir))
+				config.model.doc_encoder.transformer.model_str = doc_encoder_dir
+
+		self.model = EntityRankingModel(config.model, config.trainer)
+		# Document encoder parameters will be loaded via the huggingface initialization
+		self.model.load_state_dict(checkpoint['model'], strict=False)
+		if torch.cuda.is_available():
+			self.model.cuda()
+
 	def load_model(self, location: str, last_checkpoint=True) -> None:
 		"""Load model from given location.
 
@@ -530,7 +544,7 @@ class Experiment:
 		checkpoint = torch.load(location, map_location='cpu')
 		logger.info("Loading model from %s" % path.abspath(location))
 
-		# self.config = checkpoint['config']
+		self.config = checkpoint['config']
 		self.model.load_state_dict(checkpoint['model'], strict=False)
 		self.train_info = checkpoint['train_info']
 
@@ -540,7 +554,6 @@ class Experiment:
 			logger.info("Loading document encoder from %s" % path.abspath(doc_encoder_dir))
 
 			# Load the encoder
-			from transformers import AutoModel, AutoTokenizer
 			self.model.mention_proposer.doc_encoder.lm_encoder = AutoModel.from_pretrained(
 				pretrained_model_name_or_path=doc_encoder_dir)
 			self.model.mention_proposer.doc_encoder.tokenizer = AutoTokenizer.from_pretrained(

@@ -252,7 +252,7 @@ def targeted_coref_evaluation(
 			log_example["predicted_clusters"] = predicted_clusters
 			f.write(json.dumps(log_example) + "\n")
 
-	logger.info(log_file)
+	logger.info(path.abspath(log_file))
 
 	result_dict = {'fscore': 0.0}
 	if dataset == 'wsc':

@@ -1,3 +1,16 @@
+metrics: ['MUC', 'Bcub', 'CEAFE']
+keep_singletons: True
+seed: 45
+train: True
+use_wandb: False
+
+# Override encoder can be used during evaluation to override the encoder used during training
+# Sample use:
+# python main.py experiment=eval_all paths.model_dir=../models/ontonotes_best/
+#  model/doc_encoder/transformer=longformer_ontonotes override_encoder=True
+# Here we override the longformer_large encoder with longformer_ontonotes encoder uploaded on Huggingface
+override_encoder: False
+
 defaults:
   - _self_
   - datasets: litbank
@@ -7,14 +20,6 @@ defaults:
   - infra: local
 
   - experiment: debug
-
-
-metrics: ['MUC', 'Bcub', 'CEAFE']
-keep_singletons: True
-seed: 45
-train: True
-eval_all: False
-use_wandb: False
 
 paths:
   resource_dir: ${infra.work_dir}/../../coref_resources
