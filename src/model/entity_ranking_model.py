@@ -121,7 +121,7 @@ class EntityRankingModel(nn.Module):
 		# The first max_ents are all overwrites - We skip that part
 		if len(action_indices) > max_ents:
 			action_indices = action_indices[max_ents:]
-			# action_indices = torch.tensor(action_indices, device=self.device)
+			action_indices = torch.tensor(action_indices, device=self.device)
 			return action_indices
 		else:
 			return []
