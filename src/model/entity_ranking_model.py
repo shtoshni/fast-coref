@@ -215,8 +215,8 @@ class EntityRankingModel(nn.Module):
 				new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
 				new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
 
-				print(new_ignore_tens)
-				print(new_ignore_indices)
+				# print(new_ignore_tens)
+				# print(new_ignore_indices)
 				ignore_loss = torch.sum(self.coref_loss_fn(new_ignore_tens, new_ignore_indices))
 
 		# Consolidate different losses in one dictionary

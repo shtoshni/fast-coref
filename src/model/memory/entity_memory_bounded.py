@@ -123,7 +123,9 @@ class EntityMemoryBounded(BaseMemory):
 					ment_start, last_mention_start, ent_counter, metadata)
 				coref_new_scores = self.get_coref_new_scores(
 					ment_emb, mem_vectors, ent_counter, feature_embs)
+				coref_new_list.append(coref_new_scores)
 
+			# Check if memory has reached its limit
 			if num_ents == self.max_ents and gt_action_str != 'c':
 				# Reached memory capacity
 				if self.bounded_mem_type == 'learned':
@@ -135,7 +137,7 @@ class EntityMemoryBounded(BaseMemory):
 						ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
 					new_ignore_list.append(new_or_ignore_scores)
 
-				coref_new_list.append(coref_new_scores)
+
 
 			# Teacher forcing
 			action_str, cell_idx = gt_action_str, gt_cell_idx
@@ -196,7 +198,6 @@ class EntityMemoryBounded(BaseMemory):
 			lru_list = list(range(self.max_ents))
 
 		pred_actions = []  # argmax actions
-		new_ignore_list = []
 
 		# Boolean to track if we have started tracking any entities
 		# This value can be false if when processing subsequent chunks of a long document
@@ -221,11 +222,9 @@ class EntityMemoryBounded(BaseMemory):
 					if self.mem_type == 'learned':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_learned(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata))
-						new_ignore_list.append(new_or_ignore_scores)
 					elif self.mem_type == 'lru':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_lru(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
-						new_ignore_list.append(new_or_ignore_scores)
 
 			pred_actions.append((pred_cell_idx, pred_action_str))
 
