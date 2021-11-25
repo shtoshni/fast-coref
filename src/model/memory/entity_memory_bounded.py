@@ -244,10 +244,6 @@ class EntityMemoryBounded(BaseMemory):
 
 				elif pred_action_str == 'o':
 					# Append the new entity to the entity cluster array
-					# mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
-					# ent_counter = torch.cat([ent_counter, torch.tensor([1.0], device=self.device)], dim=0)
-					# last_mention_start = torch.cat(
-					# 	[last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
 					if pred_cell_idx == num_ents:
 						# Append the new vector
 						mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
@@ -261,7 +257,7 @@ class EntityMemoryBounded(BaseMemory):
 
 			if pred_action_str in ['o', 'c']:
 				# Coref or overwrite was chosen; place the cell_idx in use at the back of the list
-				print(lru_list, pred_cell_idx)
+				# print(lru_list, pred_cell_idx)
 				lru_list.remove(pred_cell_idx)
 				lru_list.append(pred_cell_idx)
 
