@@ -22,6 +22,20 @@ class EntityMemoryBounded(BaseMemory):
 			hidden_size=config.mlp_size, output_size=1, num_hidden_layers=config.mlp_depth,
 			drop_module=drop_module)
 
+	def get_ment_feature_embs(self, metadata):
+		# Bucket is 0 for both the embeddings
+		distance_embs = self.distance_embeddings(torch.tensor(0, device=self.device))
+		counter_embs = self.counter_embeddings(torch.tensor(0, device=self.device))
+
+		feature_embs_list = [distance_embs, counter_embs]
+
+		if 'genre' in metadata:
+			genre_emb = metadata['genre']
+			feature_embs_list.append(genre_emb)
+
+		feature_embs = self.drop_module(torch.cat(feature_embs_list, dim=-1))
+		return feature_embs
+
 	def predict_new_or_ignore_learned(
 					self, ment_emb: Tensor, mem_vectors: Tensor,
 					feature_embs: Tensor, ment_feature_embs: Tensor) -> Tuple[Tensor, int, str]:
