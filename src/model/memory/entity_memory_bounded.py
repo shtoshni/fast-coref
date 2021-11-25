@@ -161,7 +161,7 @@ class EntityMemoryBounded(BaseMemory):
 					last_mention_start = torch.cat([last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
 				else:
 					# Replace the cell content tracking another entity
-					mem_vectors[cell_idx] = ment_emb
+					mem_vectors = mem_vectors * (1 - mask) + mask * ment_emb
 					last_mention_start[cell_idx] = ment_start
 					ent_counter[cell_idx] = 1.0
 
