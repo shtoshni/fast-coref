@@ -103,7 +103,7 @@ class EntityRankingModel(nn.Module):
 
 	def new_ignore_tuple_to_idx(self, action_tuple_list: List[Tuple[int, str]]) -> List:
 		action_indices = []
-		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
+		max_ents = self.config.memory.mem_type.max_ents
 
 		for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
 			if action_str == 'o':
@@ -146,10 +146,7 @@ class EntityRankingModel(nn.Module):
 		num_ents, counter = 0, 0
 		coref_loss = 0.0
 
-		if self.training:
-			max_ents = self.config.memory.mem_type.max_ents
-		else:
-			max_ents = self.config.memory.mem_type.eval_max_ents
+		max_ents = self.config.memory.mem_type.max_ents
 
 		for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
 			if action_str == 'c':
