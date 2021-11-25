@@ -223,6 +223,8 @@ class EntityMemoryBounded(BaseMemory):
 					elif self.bounded_mem_type == 'lru':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_lru(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
+					else:
+						raise NotImplementedError("Bounded memory variant not implemented")
 
 			pred_actions.append((pred_cell_idx, pred_action_str))
 
@@ -242,10 +244,20 @@ class EntityMemoryBounded(BaseMemory):
 
 				elif pred_action_str == 'o':
 					# Append the new entity to the entity cluster array
-					mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
-					ent_counter = torch.cat([ent_counter, torch.tensor([1.0], device=self.device)], dim=0)
-					last_mention_start = torch.cat(
-						[last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
+					# mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
+					# ent_counter = torch.cat([ent_counter, torch.tensor([1.0], device=self.device)], dim=0)
+					# last_mention_start = torch.cat(
+					# 	[last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
+					if pred_cell_idx == num_ents:
+						# Append the new vector
+						mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
+						ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
+						last_mention_start = torch.cat([last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
+					else:
+						# Replace the cell content tracking another entity
+						mem_vectors[pred_cell_idx] = ment_emb
+						last_mention_start[pred_cell_idx] = ment_start
+						ent_counter[pred_cell_idx] = 1.0
 
 			if pred_action_str in ['o', 'c']:
 				# Coref or overwrite was chosen; place the cell_idx in use at the back of the list
