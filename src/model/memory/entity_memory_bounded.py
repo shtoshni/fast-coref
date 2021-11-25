@@ -249,6 +249,7 @@ class EntityMemoryBounded(BaseMemory):
 
 			if pred_action_str in ['o', 'c']:
 				# Coref or overwrite was chosen; place the cell_idx in use at the back of the list
+				print(lru_list, pred_cell_idx)
 				lru_list.remove(pred_cell_idx)
 				lru_list.append(pred_cell_idx)
 
