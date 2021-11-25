@@ -198,7 +198,7 @@ class EntityRankingModel(nn.Module):
 
 		# Get ground truth clustering mentions
 		gt_actions: List[Tuple[int, str]] = get_gt_actions(pred_mentions_list, document,
-		                                                   self.config.model.memory.mem_type)
+		                                                   self.config.memory.mem_type)
 
 		# Metadata such as document genre can be used by model for clustering
 		metadata: Dict = self.get_metadata(document)
@@ -301,5 +301,5 @@ class EntityRankingModel(nn.Module):
 			pred_actions.extend(cur_pred_actions)
 
 		gt_actions = get_gt_actions(pred_mentions_list, document,
-		                            self.config.model.memory.mem_type)  # Useful for oracle calcs
+		                            self.config.memory.mem_type)  # Useful for oracle calcs
 		return pred_mentions_list, mention_scores, gt_actions, pred_actions
