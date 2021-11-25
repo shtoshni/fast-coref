@@ -15,68 +15,6 @@ class EntityMemory(BaseMemory):
 		super(EntityMemory, self).__init__(config, span_emb_size, drop_module)
 		self.mem_type: DictConfig = config.mem_type
 
-		# Check if the memory is bounded i.e. there's a limit on the number of max entities
-		self.is_mem_bounded: bool = config.mem_type.max_ents is not None
-		if self.is_mem_bounded:
-			self.fert_mlp = MLP(
-				input_size=self.mem_size + config.num_feats * self.emb_size, bias=True,
-				hidden_size=config.mlp_size, output_size=1, num_hidden_layers=config.mlp_depth,
-				drop_module=drop_module)
-
-	def predict_new_or_ignore_learned(
-					self, ment_emb: Tensor, mem_vectors: Tensor,
-					feature_embs: Tensor, ment_feature_embs: Tensor) -> Tuple[Tensor, int, str]:
-		"""
-		Predict whether a new entity is tracked or ignored.
-
-		The key idea of this method is to predict fertility scores for different entity clusters
-		and the current mention. The fertility score is supposed to reflect the number of
-		remaining entities of a given entity cluster.
-		"""
-		# Fertility Score
-		mem_fert_input = torch.cat([mem_vectors, feature_embs], dim=-1)
-		ment_fert_input = torch.unsqueeze(torch.cat([ment_emb, ment_feature_embs], dim=-1), dim=0)
-		fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
-
-		fert_scores: Tensor = self.fert_mlp(fert_input)
-		fert_scores = torch.squeeze(fert_scores, dim=-1)
-
-		min_idx = int(torch.argmin(fert_scores).item())
-		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
-		if min_idx < max_ents:
-			# The fertility of one of the entities currently being tracked is lower than the new entity.
-			# We will overwrite this entity
-			output = (fert_scores, min_idx, 'o',)
-		else:
-			# No space - The new entity is not "fertile" enough
-			output = (fert_scores, -1, 'n',)
-
-		return output
-
-	def predict_new_or_ignore_lru(
-					self, ment_emb: Tensor, mem_vectors: Tensor, feature_embs: Tensor,
-					ment_feature_embs: Tensor, lru_list: List[int]) -> Tuple[Tensor, int, str]:
-		"""
-		Predict whether the new entity is tracked or ignored in the LRU scheme.
-
-		The idea is to compare the fertility scores for the least recently seen entity cluster
-		and the current entity cluster. The fertility scores are supposed to be ordered
-		according to the number of mentions remaining in the entity cluster.
-		"""
-		lru_cell = lru_list[0]
-		mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
-		ment_fert_input = torch.cat([ment_emb, ment_feature_embs], dim=-1)
-		fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
-		fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
-		output = fert_scores,
-
-		over_max_idx = torch.argmin(fert_scores).item()
-		if over_max_idx == 0:
-			return output + (lru_cell, 'o',)
-		else:
-			# No space - The new entity is not "fertile" enough
-			return output + (-1, 'n',)
-
 	def forward_training(self, ment_boundaries: List[List[Tensor]], mention_emb_list: List[Tensor],
 	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> List[Tensor]:
 		"""

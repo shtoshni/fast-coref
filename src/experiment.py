@@ -191,13 +191,14 @@ class Experiment:
 		# Resume training
 		if path.exists(self.model_path):
 			self.load_model(self.model_path, last_checkpoint=True)
+			logger.info("Model loaded\n")
 		else:
 			# Starting training
 			torch.random.manual_seed(self.config.seed)
 			np.random.seed(self.config.seed)
 			random.seed(self.config.seed)
 
-			logger.info("Model loaded\n")
+			logger.info("Model initialized\n")
 			utils.print_model_info(self.model)
 			sys.stdout.flush()
 

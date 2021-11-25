@@ -4,7 +4,7 @@ import torch.nn as nn
 from model.mention_proposal import MentionProposalModule
 from model.utils import get_gt_actions
 from model.memory.entity_memory import EntityMemory
-
+from model.memory.entity_memory_bounded import EntityMemoryBounded
 
 from typing import Dict, List, Tuple
 from omegaconf import DictConfig
@@ -53,8 +53,14 @@ class EntityRankingModel(nn.Module):
 		if self.config.metadata_params.use_genre_feature:
 			self.config.memory.num_feats = 3
 
-		self.memory_net = EntityMemory(
-			config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
+		self.mem_type = self.config.memory.mem_type.name
+
+		if self.mem_type == 'unbounded':
+			self.memory_net = EntityMemory(
+				config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
+		else:
+			self.memory_net = EntityMemoryBounded(
+				config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
 		self.coref_loss_fn = nn.CrossEntropyLoss(label_smoothing=self.train_config.label_smoothing_wt)
 
@@ -196,9 +202,24 @@ class EntityRankingModel(nn.Module):
 		# Metadata such as document genre can be used by model for clustering
 		metadata: Dict = self.get_metadata(document)
 
+		# Bounded memory loss
+		ignore_loss = None
+
 		# Perform teacher-forced clustering to get gt action probabilities
-		coref_new_list: List[Tensor] = self.memory_net.forward_training(
-			pred_mentions, mention_emb_list, gt_actions, metadata)
+		if self.mem_type == 'unbounded':
+			coref_new_list = self.memory_net.forward_training(
+				pred_mentions, mention_emb_list, gt_actions, metadata)
+		else:
+			coref_new_list, new_ignore_list = self.memory_net.forward_training(
+				pred_mentions, mention_emb_list, gt_actions, metadata)
+			if len(new_ignore_list):
+				new_ignore_tens = torch.stack(new_ignore_list, dim=0)
+				new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
+
+				print(new_ignore_tens.shape)
+				print(new_ignore_indices.shape)
+				ignore_loss = torch.sum(self.label_smoothing_loss_fn(
+					new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
 
 		# Consolidate different losses in one dictionary
 		if 'ment_loss' in proposer_output_dict:
@@ -210,6 +231,9 @@ class EntityRankingModel(nn.Module):
 			coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
 			loss_dict['total'] = loss_dict['total'] + coref_loss
 			loss_dict['coref'] = coref_loss
+			if ignore_loss is not None:
+				loss_dict['bounded'] = ignore_loss
+				loss_dict['total'] = loss_dict['total'] + ignore_loss
 		return loss_dict
 
 	def forward(self, document: Dict) -> Tuple[List, List, List, List]:
