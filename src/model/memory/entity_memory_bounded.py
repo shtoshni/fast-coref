@@ -55,8 +55,7 @@ class EntityMemoryBounded(BaseMemory):
 		fert_scores = torch.squeeze(fert_scores, dim=-1)
 
 		min_idx = int(torch.argmin(fert_scores).item())
-		max_ents = (self.config.max_ents if self.training else self.config.eval_max_ents)
-		if min_idx < max_ents:
+		if min_idx < self.max_ents:
 			# The fertility of one of the entities currently being tracked is lower than the new entity.
 			# We will overwrite this entity
 			output = (fert_scores, min_idx, 'o',)
