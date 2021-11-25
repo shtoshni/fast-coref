@@ -197,7 +197,7 @@ class EntityRankingModel(nn.Module):
 		pred_mentions_list = pred_mentions.tolist()
 
 		# Get ground truth clustering mentions
-		gt_actions: List[Tuple[int, str]] = get_gt_actions(pred_mentions_list, document)
+		gt_actions: List[Tuple[int, str]] = self.get_gt_actions(pred_mentions_list, document)
 
 		# Metadata such as document genre can be used by model for clustering
 		metadata: Dict = self.get_metadata(document)

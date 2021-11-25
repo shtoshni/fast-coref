@@ -1,11 +1,14 @@
 from coref_utils.utils import get_mention_to_cluster_idx
 
 
-def get_gt_actions(pred_mentions, document):
+def get_gt_actions(pred_mentions, document, mem_type_config):
 	if "clusters" in document:
 		# Ground truth is avaliable
-		mention_to_cluster = get_mention_to_cluster_idx(document["clusters"])
-		return get_actions_unbounded_fast(pred_mentions, mention_to_cluster)
+		gt_clusters = document["clusters"]
+		if mem_type_config.name == 'unbounded':
+			return get_actions_unbounded_fast(pred_mentions, gt_clusters)
+		elif mem_type_config.name == 'learned':
+			return get_actions_learned(pred_mentions, document["clusters"], mem_type_config.max_ents)
 	else:
 		# Don't have ground truth clusters i.e. running it in the wild
 		# Generate dummy actions
@@ -32,10 +35,12 @@ def action_sequences_to_clusters(actions, mentions):
 	return clusters
 
 
-def get_actions_unbounded_fast(pred_mentions, mention_to_cluster):
+def get_actions_unbounded_fast(pred_mentions, gt_clusters):
 	actions = []
 	cell_counter = 0
 	cluster_to_cell = {}
+	mention_to_cluster = get_mention_to_cluster_idx(gt_clusters)
+
 	for idx, mention in enumerate(pred_mentions):
 		if tuple(mention) not in mention_to_cluster:
 			actions.append((-1, 'i'))
