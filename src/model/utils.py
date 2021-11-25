@@ -9,6 +9,8 @@ def get_gt_actions(pred_mentions, document, mem_type_config):
 			return get_actions_unbounded_fast(pred_mentions, gt_clusters)
 		elif mem_type_config.name == 'learned':
 			return get_actions_learned(pred_mentions, document["clusters"], mem_type_config.max_ents)
+		elif mem_type_config.name == 'lru':
+			return get_actions_lru(pred_mentions, document["clusters"], mem_type_config.max_ents)
 	else:
 		# Don't have ground truth clusters i.e. running it in the wild
 		# Generate dummy actions
