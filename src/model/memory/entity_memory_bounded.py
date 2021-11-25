@@ -124,7 +124,7 @@ class EntityMemoryBounded(BaseMemory):
 				coref_new_scores = self.get_coref_new_scores(
 					ment_emb, mem_vectors, ent_counter, feature_embs)
 
-			if num_ents == self.max_ents and gt_action_str == 'o':
+			if num_ents == self.max_ents and gt_action_str != 'c':
 				# Reached memory capacity
 				if self.bounded_mem_type == 'learned':
 					new_or_ignore_scores, _, _ = self.predict_new_or_ignore_learned(
@@ -216,7 +216,7 @@ class EntityMemoryBounded(BaseMemory):
 					ment_emb, mem_vectors, ent_counter, feature_embs)
 				pred_cell_idx, pred_action_str = self.assign_cluster(coref_new_scores)
 
-				if num_ents == self.max_ents:
+				if num_ents == self.max_ents and pred_action_str != 'c':
 					# Reached memory capacity
 					if self.mem_type == 'learned':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_learned(
