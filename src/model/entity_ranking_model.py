@@ -211,12 +211,12 @@ class EntityRankingModel(nn.Module):
 				pred_mentions, mention_emb_list, gt_actions, metadata)
 			if len(new_ignore_list):
 				new_ignore_tens = torch.stack(new_ignore_list, dim=0)
-				print(gt_actions)
+				# print(gt_actions)
 				new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
 				new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
 
-				print(new_ignore_tens.shape)
-				print(new_ignore_indices.shape)
+				print(new_ignore_tens)
+				print(new_ignore_indices)
 				ignore_loss = torch.sum(self.coref_loss_fn(
 					new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
 
