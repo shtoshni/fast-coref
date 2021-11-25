@@ -121,7 +121,6 @@ class EntityRankingModel(nn.Module):
 		# The first max_ents are all overwrites - We skip that part
 		if len(action_indices) > max_ents:
 			action_indices = action_indices[max_ents:]
-			action_indices = torch.tensor(action_indices, device=self.device)
 			return action_indices
 		else:
 			return []
@@ -213,6 +212,7 @@ class EntityRankingModel(nn.Module):
 			if len(new_ignore_list):
 				new_ignore_tens = torch.stack(new_ignore_list, dim=0)
 				new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
+				new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
 
 				print(new_ignore_tens.shape)
 				print(new_ignore_indices.shape)
