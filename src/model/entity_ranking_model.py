@@ -217,8 +217,7 @@ class EntityRankingModel(nn.Module):
 
 				print(new_ignore_tens)
 				print(new_ignore_indices)
-				ignore_loss = torch.sum(self.coref_loss_fn(
-					new_ignore_tens, torch.unsqueeze(new_ignore_indices, dim=1)))
+				ignore_loss = torch.sum(self.coref_loss_fn(new_ignore_tens, new_ignore_indices))
 
 		# Consolidate different losses in one dictionary
 		if 'ment_loss' in proposer_output_dict:
