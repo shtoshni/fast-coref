@@ -137,8 +137,6 @@ class EntityMemoryBounded(BaseMemory):
 						ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
 					new_ignore_list.append(new_or_ignore_scores)
 
-
-
 			# Teacher forcing
 			action_str, cell_idx = gt_action_str, gt_cell_idx
 
@@ -219,10 +217,10 @@ class EntityMemoryBounded(BaseMemory):
 
 				if num_ents == self.max_ents and pred_action_str != 'c':
 					# Reached memory capacity
-					if self.mem_type == 'learned':
+					if self.bounded_mem_type == 'learned':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_learned(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata))
-					elif self.mem_type == 'lru':
+					elif self.bounded_mem_type == 'lru':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_lru(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
 
