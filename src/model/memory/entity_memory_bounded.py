@@ -51,17 +51,17 @@ class EntityMemoryBounded(BaseMemory):
 		ment_fert_input = torch.unsqueeze(torch.cat([ment_emb, ment_feature_embs], dim=-1), dim=0)
 		fert_input = torch.cat([mem_fert_input, ment_fert_input], dim=0)
 
-		fert_scores: Tensor = self.fert_mlp(fert_input)
-		fert_scores = torch.squeeze(fert_scores, dim=-1)
+		neg_fert_scores: Tensor = self.fert_mlp(fert_input)
+		neg_fert_scores = torch.squeeze(neg_fert_scores, dim=-1)
 
-		min_idx = int(torch.argmin(fert_scores).item())
-		if min_idx < self.max_ents:
+		max_idx = int(torch.argmax(neg_fert_scores).item())
+		if max_idx < self.max_ents:
 			# The fertility of one of the entities currently being tracked is lower than the new entity.
 			# We will overwrite this entity
-			output = (fert_scores, min_idx, 'o',)
+			output = (neg_fert_scores, max_idx, 'o',)
 		else:
 			# No space - The new entity is not "fertile" enough
-			output = (fert_scores, -1, 'n',)
+			output = (neg_fert_scores, -1, 'n',)
 
 		return output
 
