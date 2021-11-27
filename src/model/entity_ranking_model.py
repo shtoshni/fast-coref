@@ -62,9 +62,9 @@ class EntityRankingModel(nn.Module):
 			self.memory_net = EntityMemoryBounded(
 				config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
-		self.coref_loss_fn = nn.CrossEntropyLoss(label_smoothing=self.train_config.label_smoothing_wt)
-		self.ignore_loss_fn = nn.CrossEntropyLoss(
-			label_smoothing=self.train_config.label_smoothing_wt, reduction='sum')
+		self.loss_fn = nn.CrossEntropyLoss(label_smoothing=self.train_config.label_smoothing_wt)
+		# self.ignore_loss_fn = nn.CrossEntropyLoss(
+		# 	label_smoothing=self.train_config.label_smoothing_wt, reduction='sum')
 
 	@property
 	def device(self) -> torch.device:
@@ -103,31 +103,41 @@ class EntityRankingModel(nn.Module):
 		else:
 			return {}
 
-	def new_ignore_tuple_to_idx(self, action_tuple_list: List[Tuple[int, str]]) -> List:
-		action_indices = []
+	def calculate_new_ignore_loss(
+					self,  new_ignore_list: List, action_tuple_list: List[Tuple[int, str]]) -> Tensor:
+		ent_counter = 0
 		max_ents = self.config.memory.mem_type.max_ents
 
+		ignore_loss = torch.tensor(0.0, device=self.device)
+
 		for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
-			if action_str == 'o':
-				if self.mem_type == 'lru':
-					action_indices.append(0)
-				else:
-					action_indices.append(cell_idx)
-			elif action_str == 'n':
-				# No space
-				if self.mem_type == 'lru':
-					action_indices.append(1)
-				else:
-					action_indices.append(max_ents)
+			if action_str == 'c':
+				continue
+			else:
+				# New entity
+				ent_counter += 1
 
-		# The first max_ents are all overwrites - We skip that part
-		if len(action_indices) > max_ents:
-			action_indices = action_indices[max_ents:]
-			return action_indices
-		else:
-			return []
+				if action_str == 'o':
+					if self.mem_type == 'lru':
+						gt_idx = 0
+					else:
+						gt_idx = cell_idx
+				else:
+					# No space
+					if self.mem_type == 'lru':
+						gt_idx = 1
+					else:
+						gt_idx = max_ents
 
-	def calculate_coref_loss(self, action_prob_list: List, action_tuple_list: List[Tuple[int, str]]):
+				if ent_counter > max_ents:
+					# Reached memory capacity
+					index = ent_counter - max_ents - 1
+					target = torch.tensor([gt_idx], device=self.device)
+					ignore_loss += self.loss_fn(torch.unsqueeze(new_ignore_list[index], dim=0), target)
+
+		return ignore_loss
+
+	def calculate_coref_loss(self, action_prob_list: List, action_tuple_list: List[Tuple[int, str]]) -> Tensor:
 		"""Calculates the coreference loss for the autoregressive online clustering module.
 
 		Args:
@@ -145,7 +155,7 @@ class EntityRankingModel(nn.Module):
 		"""
 
 		num_ents, counter = 0, 0
-		coref_loss = 0.0
+		coref_loss = torch.tensor(0.0, device=self.device)
 
 		max_ents = self.config.memory.mem_type.max_ents
 
@@ -166,7 +176,7 @@ class EntityRankingModel(nn.Module):
 				continue
 
 			target = torch.tensor([gt_idx], device=self.device)
-			coref_loss += self.coref_loss_fn(torch.unsqueeze(action_prob_list[counter], dim=0), target)
+			coref_loss += self.loss_fn(torch.unsqueeze(action_prob_list[counter], dim=0), target)
 			counter += 1
 
 		return coref_loss
@@ -195,8 +205,8 @@ class EntityRankingModel(nn.Module):
 		pred_mentions_list = pred_mentions.tolist()
 
 		# Get ground truth clustering mentions
-		gt_actions: List[Tuple[int, str]] = get_gt_actions(pred_mentions_list, document,
-		                                                   self.config.memory.mem_type)
+		gt_actions: List[Tuple[int, str]] = get_gt_actions(
+			pred_mentions_list, document, self.config.memory.mem_type)
 
 		# Metadata such as document genre can be used by model for clustering
 		metadata: Dict = self.get_metadata(document)
@@ -212,14 +222,11 @@ class EntityRankingModel(nn.Module):
 			coref_new_list, new_ignore_list = self.memory_net.forward_training(
 				pred_mentions, mention_emb_list, gt_actions, metadata)
 			if len(new_ignore_list):
-				new_ignore_tens = torch.stack(new_ignore_list, dim=0)
-				# print(gt_actions)
-				new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
-				new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
-
-				# print(new_ignore_tens)
-				# print(new_ignore_indices)
-				ignore_loss = self.ignore_loss_fn(new_ignore_tens, new_ignore_indices)
+				ignore_loss = self.calculate_new_ignore_loss(new_ignore_list, action_tuple_list)
+				# new_ignore_tens = torch.stack(new_ignore_list, dim=0)
+				# new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
+				# new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
+				# ignore_loss = self.ignore_loss_fn(new_ignore_tens, new_ignore_indices)
 
 		# Consolidate different losses in one dictionary
 		if 'ment_loss' in proposer_output_dict:

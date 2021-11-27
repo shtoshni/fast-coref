@@ -14,6 +14,5 @@ trainer:
   max_evals: 20
   patience: 5
   eval_per_k_steps: 400
-  label_smoothing_wt: 0.1
 
 
