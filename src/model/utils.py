@@ -30,6 +30,8 @@ def action_sequences_to_clusters(actions, mentions):
 				# Remove the old cluster and initialize the new
 				clusters.append(cell_to_clusters[cell_idx])
 			cell_to_clusters[cell_idx] = [mention]
+		elif action_type == 'n':
+			clusters.append([mention])
 
 	for cell_idx, cluster in cell_to_clusters.items():
 		clusters.append(cluster)
