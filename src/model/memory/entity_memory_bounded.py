@@ -153,7 +153,7 @@ class EntityMemoryBounded(BaseMemory):
 				last_mention_start[cell_idx] = ment_start
 			elif action_str == 'o':
 				if cell_idx == num_ents:
-					# Append the new vector
+					# Append the new vector, memory has not reached maximum capacity
 					mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
 					ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
 					last_mention_start = torch.cat([last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
@@ -186,7 +186,6 @@ class EntityMemoryBounded(BaseMemory):
 			pred_actions: List of predicted clustering actions.
 			mem_state: Current memory state.
 		"""
-
 		# Initialize memory
 		if memory_init is not None:
 			mem_vectors, ent_counter, last_mention_start = self.initialize_memory(**memory_init)

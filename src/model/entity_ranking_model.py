@@ -63,6 +63,8 @@ class EntityRankingModel(nn.Module):
 				config=self.config.memory, span_emb_size=span_emb_size, drop_module=self.drop_module)
 
 		self.coref_loss_fn = nn.CrossEntropyLoss(label_smoothing=self.train_config.label_smoothing_wt)
+		self.ignore_loss_fn = nn.CrossEntropyLoss(
+			label_smoothing=self.train_config.label_smoothing_wt, reduction='sum')
 
 	@property
 	def device(self) -> torch.device:
@@ -217,7 +219,7 @@ class EntityRankingModel(nn.Module):
 
 				# print(new_ignore_tens)
 				# print(new_ignore_indices)
-				ignore_loss = torch.sum(self.coref_loss_fn(new_ignore_tens, new_ignore_indices))
+				ignore_loss = self.ignore_loss_fn(new_ignore_tens, new_ignore_indices)
 
 		# Consolidate different losses in one dictionary
 		if 'ment_loss' in proposer_output_dict:
