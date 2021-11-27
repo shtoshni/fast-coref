@@ -9,7 +9,8 @@ from torch import Tensor
 
 
 class EntityMemoryBounded(BaseMemory):
-	"""Module for clustering proposed mention spans using Entity-Ranking paradigm."""
+	"""Module for clustering proposed mention spans using Entity-Ranking paradigm
+	with bounded memory."""
 
 	def __init__(self, config: DictConfig, span_emb_size: int, drop_module: nn.Module) -> None:
 		super(EntityMemoryBounded, self).__init__(config, span_emb_size, drop_module)
@@ -131,11 +132,12 @@ class EntityMemoryBounded(BaseMemory):
 				if self.bounded_mem_type == 'learned':
 					new_or_ignore_scores, _, _ = self.predict_new_or_ignore_learned(
 						ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata))
-					new_ignore_list.append(new_or_ignore_scores)
-				elif self.bounded_mem_type == 'lru':
+				else:
+					# LRU memory scheeme
 					new_or_ignore_scores, _, _ = self.predict_new_or_ignore_lru(
 						ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
-					new_ignore_list.append(new_or_ignore_scores)
+
+				new_ignore_list.append(new_or_ignore_scores)
 
 			# Teacher forcing
 			action_str, cell_idx = gt_action_str, gt_cell_idx
@@ -219,11 +221,10 @@ class EntityMemoryBounded(BaseMemory):
 					if self.bounded_mem_type == 'learned':
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_learned(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata))
-					elif self.bounded_mem_type == 'lru':
+					else:
+						# LRU memory scheme
 						new_or_ignore_scores, pred_cell_idx, pred_action_str = self.predict_new_or_ignore_lru(
 							ment_emb, mem_vectors, feature_embs, self.get_ment_feature_embs(metadata), lru_list)
-					else:
-						raise NotImplementedError("Bounded memory variant not implemented")
 
 			pred_actions.append((pred_cell_idx, pred_action_str))
 
@@ -244,7 +245,6 @@ class EntityMemoryBounded(BaseMemory):
 				elif pred_action_str == 'o':
 					# Append the new entity to the entity cluster array
 					if pred_cell_idx == num_ents:
-						# Append the new vector
 						mem_vectors = torch.cat([mem_vectors, torch.unsqueeze(ment_emb, dim=0)], dim=0)
 						ent_counter = torch.cat([ent_counter, torch.tensor([1.0]).to(self.device)], dim=0)
 						last_mention_start = torch.cat([last_mention_start, ment_start.unsqueeze(dim=0)], dim=0)
