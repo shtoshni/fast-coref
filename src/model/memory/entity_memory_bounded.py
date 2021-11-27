@@ -79,10 +79,10 @@ class EntityMemoryBounded(BaseMemory):
 		mem_fert_input = torch.cat([mem_vectors[lru_cell, :], feature_embs[lru_cell, :]], dim=0)
 		ment_fert_input = torch.cat([ment_emb, ment_feature_embs], dim=-1)
 		fert_input = torch.stack([mem_fert_input, ment_fert_input], dim=0)
-		fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
-		output = fert_scores,
+		neg_fert_scores = torch.squeeze(self.fert_mlp(fert_input), dim=-1)
+		output = neg_fert_scores,
 
-		over_max_idx = torch.argmin(fert_scores).item()
+		over_max_idx = torch.argmax(neg_fert_scores).item()
 		if over_max_idx == 0:
 			return output + (lru_cell, 'o',)
 		else:
