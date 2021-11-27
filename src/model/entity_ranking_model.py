@@ -222,7 +222,7 @@ class EntityRankingModel(nn.Module):
 			coref_new_list, new_ignore_list = self.memory_net.forward_training(
 				pred_mentions, mention_emb_list, gt_actions, metadata)
 			if len(new_ignore_list):
-				ignore_loss = self.calculate_new_ignore_loss(new_ignore_list, action_tuple_list)
+				ignore_loss = self.calculate_new_ignore_loss(new_ignore_list, gt_actions)
 				# new_ignore_tens = torch.stack(new_ignore_list, dim=0)
 				# new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
 				# new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
