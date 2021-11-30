@@ -121,9 +121,9 @@ python main.py experiment=litbank model/memory/mem_type=learned model.memory.mem
 ```
 
 **Note**<br/>
-The model is saved in two parts. All the other parametes are saved separately 
-from the document encoder parameters. The separately saved document encoder 
-can be easily uploaded to Hugginface due to this separation.
+The model is saved in two parts. The document encoder and all the remaining parametes 
+are saved separately. The document encoder can then be easily uploaded to 
+Huggingface.
 
 ### Inference
 
