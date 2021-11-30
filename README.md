@@ -21,7 +21,7 @@ inference can scale to very long documents.
 - Pretrained models are released 
 [here](https://drive.google.com/drive/folders/1270pP1JIYLleLH7rkRyXyHV2p0C7rX_8?usp=sharing). 
 - Processed data for Character Identification, GAP, LitBank, QuizBowl, WikiCoref, 
-and WSC is available [here](https://drive.google.com/drive/folders/1j7OsSmPhkhtuH_YvS9LvAM4fx_VoqZzw?usp=sharing)    
+and WSC is available [here](https://drive.google.com/drive/folders/1j7OsSmPhkhtuH_YvS9LvAM4fx_VoqZzw?usp=sharing).    
 - The fine-tuned document encoders are separately released on 
 [huggingface](https://huggingface.co/shtoshni).
 - Checkout the 
@@ -65,6 +65,7 @@ mkdir data
 ```
 cd fast-coref/src
 export PYTHONPATH=.
+
 # Demonstrating the data preparation step for QuizBowl.
 # Here we point to the CoNLL directory extracted from the original data
 # Output directory is created in the parent directory i.e. 
@@ -72,7 +73,7 @@ export PYTHONPATH=.
 python data_processing/process_quizbowl.py ../../coref_resources/data/quizbowl/conll
 ```
 - Processed data for Character Identification, GAP, LitBank, QuizBowl, WikiCoref, 
-and WSC is available [here](https://drive.google.com/drive/folders/1j7OsSmPhkhtuH_YvS9LvAM4fx_VoqZzw?usp=sharing)    
+and WSC is available [here](https://drive.google.com/drive/folders/1j7OsSmPhkhtuH_YvS9LvAM4fx_VoqZzw?usp=sharing).    
 - OntoNotes is a proprietary dataset and Preco is large. 
 Please run the corresponding scripts to process these datasets. 
 For OntoNotes we're sharing the pseudo-singletons in its namesake directory.
