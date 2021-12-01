@@ -457,11 +457,11 @@ class Experiment:
 
 		logger.info("Validation performance: %.1f" % self.train_info['val_perf'])
 
-		for split in ['test']:
+		for split in ['dev', 'test']:
 			logger.info('\n')
 			logger.info('%s' % split.capitalize())
 
-			for dataset in self.data_iter_map[split]:
+			for dataset in self.data_iter_map.get(split, []):
 				dataset_dir = path.join(self.config.paths.model_dir, dataset)
 				if not path.exists(dataset_dir):
 					os.makedirs(dataset_dir)
