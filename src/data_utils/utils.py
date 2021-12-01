@@ -12,8 +12,6 @@ def get_data_file(data_dir: str, split: str, max_segment_len: int) -> str:
 		if path.exists(jsonl_file):
 			return jsonl_file
 
-	raise ValueError(f"No relevant files at {data_dir}")
-
 
 def load_dataset(
 				data_dir: str, singleton_file: str = None, max_segment_len: int = 2048,
@@ -21,6 +19,8 @@ def load_dataset(
 	all_splits = []
 	for split in ["train", "dev", "test"]:
 		jsonl_file = get_data_file(data_dir, split, max_segment_len)
+		if jsonl_file is None:
+			raise ValueError(f"No relevant files at {data_dir}")
 		split_data = []
 		with open(jsonl_file) as f:
 			for line in f:
@@ -46,13 +46,16 @@ def load_dataset(
 	        "test": test_data[:num_test_docs]}
 
 
-def load_eval_dataset(data_dir: str, num_test_docs: int, max_segment_len: int) -> Dict:
-	jsonl_file = get_data_file(data_dir, "test", max_segment_len)
+def load_eval_dataset(data_dir: str, max_segment_len: int) -> Dict:
+	data_dict = {}
+	for split in ["dev", "test"]:
+		jsonl_file = get_data_file(data_dir, split, max_segment_len)
+		if jsonl_file is not None:
+			split_data = []
+			with open(jsonl_file) as f:
+				for line in f:
+					split_data.append(json.loads(line.strip()))
 
-	split_data = []
-	with open(jsonl_file) as f:
-		for line in f:
-			split_data.append(json.loads(line.strip()))
+			data_dict[split] = split_data
 
-	assert (len(split_data) >= num_test_docs)
-	return {"test": split_data[:num_test_docs]}
+	return data_dict

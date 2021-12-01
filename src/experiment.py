@@ -149,7 +149,6 @@ class Experiment:
 			if self.eval_model:
 				raw_data_map[dataset_name] = load_eval_dataset(
 					data_dir, max_segment_len=max_segment_len,
-					num_test_docs=num_test_docs
 				)
 			else:
 				self.num_train_docs_map[dataset_name] = num_train_docs
@@ -164,10 +163,11 @@ class Experiment:
 			self.model.get_tokenizer(), remove_singletons=(not self.config.keep_singletons))
 
 		if self.eval_model:
-			self.data_iter_map['test'] = {}
-			for dataset in raw_data_map:
-				self.data_iter_map['test'][dataset] = \
-					data_processor.tensorize_data(raw_data_map[dataset]['test'])
+			for split in ['dev', 'test']:
+				self.data_iter_map[split] = {}
+				for dataset in raw_data_map:
+					self.data_iter_map[split][dataset] = \
+						data_processor.tensorize_data(raw_data_map[dataset][split], training=False)
 		else:
 			# Training
 			for split in ['train', 'dev', 'test']:
