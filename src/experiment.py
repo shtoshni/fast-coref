@@ -470,7 +470,7 @@ class Experiment:
 				logger.info('Dataset: %s\n' % self.config.datasets[dataset].name)
 
 				result_dict = coref_evaluation(
-					self.config, self.model, self.data_iter_map, dataset=dataset, split='test', final_eval=True,
+					self.config, self.model, self.data_iter_map, dataset=dataset, split=split, final_eval=True,
 					conll_data_dir=self.conll_data_dir)
 				if self.config.use_wandb:
 					self._wandb_log(result_dict, dataset=dataset, split=split)
