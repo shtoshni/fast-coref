@@ -54,13 +54,7 @@ def main_train(config):
 	if config.paths.best_model_path is None and (config.paths.model_path is not None):
 		config.paths.best_model_path = config.paths.model_path
 
-	if config.use_wandb:
-		# Wandb Initialization
-		wandb.init(
-			id=model_name, project="Coreference", config=dict(config), resume=True,
-			# notes="Thesis updates", tags="thesis",
-		)
-	Experiment(config)
+	return model_name
 
 
 def main_eval(config):
@@ -76,15 +70,24 @@ def main_eval(config):
 	config.paths.best_model_path = path.abspath(path.join(
 		config.paths.best_model_dir, config.paths.model_filename))
 
-	Experiment(config)
-
 
 @hydra.main(config_path="conf", config_name="config")
 def main(config):
 	if config.train:
-		main_train(config)
+		model_name = main_train(config)
 	else:
 		main_eval(config)
+		model_name = path.basename(path.normpath(config.paths.model_dir))
+		# Strip prefix
+		model_name = model_name.lstrip(config.paths.model_name_prefix)
+
+	if config.use_wandb:
+		# Wandb Initialization
+		wandb.init(
+			id=model_name, project="Coreference", config=dict(config), resume=True,
+		)
+
+	Experiment(config)
 
 
 if __name__ == "__main__":
