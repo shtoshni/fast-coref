@@ -165,7 +165,9 @@ class Experiment:
 		if self.eval_model:
 			for split in ['dev', 'test']:
 				self.data_iter_map[split] = {}
-				for dataset in raw_data_map:
+
+			for dataset in raw_data_map:
+				for split in raw_data_map[dataset]:
 					self.data_iter_map[split][dataset] = \
 						data_processor.tensorize_data(raw_data_map[dataset][split], training=False)
 		else:
