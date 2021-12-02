@@ -79,7 +79,8 @@ def main(config):
 		main_eval(config)
 		model_name = path.basename(path.normpath(config.paths.model_dir))
 		# Strip prefix
-		model_name = model_name.lstrip(config.paths.model_name_prefix)
+		if model_name.startswith(config.paths.model_name_prefix):
+			model_name = model_name[len(config.paths.model_name_prefix):]
 
 	if config.use_wandb:
 		# Wandb Initialization
