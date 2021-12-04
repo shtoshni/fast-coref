@@ -516,6 +516,12 @@ class Experiment:
 			model_config = config.model
 			model_config.doc_encoder.transformer = self.config.model.doc_encoder.transformer
 
+		# Override memory
+		# For e.g., can test with a different bounded memory size
+		if self.config.override_memory:
+			model_config = config.model
+			model_config.memory = self.config.model.memory
+
 		self.config.model = config.model
 
 		self.train_info = checkpoint['train_info']
