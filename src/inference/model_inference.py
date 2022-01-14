@@ -63,7 +63,7 @@ class Inference:
 		for idx_cluster in idx_clusters:
 			cur_cluster = []
 			for (ment_start, ment_end) in idx_cluster:
-				cur_cluster.append(((ment_start, ment_end),
+				cur_cluster.append((subtoken_map[ment_start], subtoken_map[ment_end]),
 				                    " ".join(orig_tokens[subtoken_map[ment_start]: subtoken_map[ment_end] + 1])))
 
 			clusters.append(cur_cluster)
