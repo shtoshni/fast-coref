@@ -4,7 +4,7 @@ import logging
 import json
 import numpy as np
 from coref_utils.metrics import CorefEvaluator
-from coref_utils.utils import get_mention_to_cluster
+from coref_utils.utils import get_mention_to_cluster, filter_clusters
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 logging.basicConfig(format='%(message)s', level=logging.INFO)
@@ -53,8 +53,8 @@ def singleton_analysis(data):
         # singleton_evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
 
         # Non-singleton performance
-        gold_clusters = [cluster for cluster in instance["clusters"] if len(cluster) > 1]
-        pred_clusters = [cluster for cluster in instance["predicted_clusters"] if len(cluster) > 1]
+        gold_clusters = filter_clusters(instance["clusters"], threshold=2)
+        pred_clusters = filter_clusters(instance["predicted_clusters"], threshold=2)
 
         gold_cluster_lens.extend([len(cluster) for cluster in instance["clusters"]])
         pred_cluster_lens.extend([len(cluster) for cluster in instance["predicted_clusters"]])
