@@ -512,7 +512,7 @@ class Experiment:
 		# but the evaluation config might lack this detail (eval: experiment=eval_all)
 		# However, overriding the encoder is possible -- This method is a bit hacky but allows for overriding the pretrained
 		# transformer model from command line.
-		if self.config.override_encoder:
+		if self.config.get('override_encoder', False):
 			model_config = config.model
 			model_config.doc_encoder.transformer = self.config.model.doc_encoder.transformer
 
