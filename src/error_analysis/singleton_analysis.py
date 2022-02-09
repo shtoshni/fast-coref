@@ -59,10 +59,8 @@ def singleton_analysis(data):
         gold_cluster_lens.extend([len(cluster) for cluster in instance["clusters"]])
         pred_cluster_lens.extend([len(cluster) for cluster in instance["predicted_clusters"]])
 
-        predicted_clusters, mention_to_predicted = \
-            get_mention_to_cluster(pred_clusters, threshold=1)
-        gold_clusters, mention_to_gold = \
-            get_mention_to_cluster(gold_clusters, threshold=1)
+        predicted_clusters, mention_to_predicted = get_mention_to_cluster(pred_clusters)
+        gold_clusters, mention_to_gold = get_mention_to_cluster(gold_clusters)
         non_singleton_evaluator.update(predicted_clusters, gold_clusters, mention_to_predicted, mention_to_gold)
 
     logger.info("\nGT singletons: %d, Pred singletons: %d\n" % (gold_singletons, pred_singletons))
