@@ -518,7 +518,7 @@ class Experiment:
 
 		# Override memory
 		# For e.g., can test with a different bounded memory size
-		if self.config.override_memory:
+		if self.config.get('override_memory', False):
 			model_config = config.model
 			model_config.memory = self.config.model.memory
 
