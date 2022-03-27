@@ -75,7 +75,7 @@ def get_document(text_file, xml_file, tokenizer, segment_len):
 		if len(coref_class_to_spans[coref_class]) == 1:
 			# print(xml_file)
 			# print(coref_class, coref_class_to_spans[coref_class])
-			span_start, span_end = coref_class_to_spans[coref_class][0]
+			# span_start, span_end = coref_class_to_spans[coref_class][0]
 			# print(tokenizer.convert_tokens_to_string(document_state.tokens[span_start: span_end + 1]))
 			del coref_class_to_spans[coref_class]
 

@@ -1,4 +1,5 @@
 import json
+import spacy
 
 from os import path
 from data_processing.utils import flatten, BaseDocumentState, parse_args
@@ -48,7 +49,7 @@ def search_span(word_list, token_list):
 	return -1
 
 
-def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
+def minimize_partition(input_dir, output_dir, tokenizer, basic_tokenizer, split="test"):
 	input_path = path.join(input_dir, f"gap-{split}.tsv")
 	output_path = path.join(output_dir, f"{split}.jsonlines")
 
@@ -83,7 +84,11 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
 			tokenized_spans = []
 			for idx, intermediate_span in enumerate(text_spans):
 				prefix_len.append(len(doc_token_list))
-				span_tokens = tokenizer.tokenize(intermediate_span)
+				span_tokens = []
+				for word in basic_tokenizer(intermediate_span):
+					span_tokens.extend(tokenizer.tokenize(str(word)))
+
+				# span_tokens = tokenizer.tokenize(intermediate_span)
 				if idx % 2 == 1:
 					tokenized_spans.append([prefix_len[-1], prefix_len[-1] + len(span_tokens) - 1])
 				doc_token_list.extend(tokenizer.convert_tokens_to_ids(span_tokens))
@@ -96,10 +101,7 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
 
 			document = GAPDocumentState(doc_key.strip())
 			document.tokens = tokenizer.convert_ids_to_tokens(doc_token_list)
-			# print(document.tokens)
-			# print(text)
-			# print(label_to_span)
-			# print(len(doc_token_list))
+
 			document.segments = [doc_token_list]
 			document.subtoken_map = list(range(len(doc_token_list)))
 			document.pronoun_span = label_to_span['pronoun']
@@ -127,9 +129,10 @@ def minimize_partition(input_dir, output_dir, tokenizer, split="test"):
 
 def minimize_split(args):
 	tokenizer = args.tokenizer
-
+	basic_tokenizer = spacy.load('en_core_web_sm')
 	for split in ["validation", "test", "train"]:
-		minimize_partition(args.input_dir, args.output_dir, tokenizer, split=split)
+		minimize_partition(
+			args.input_dir, args.output_dir, tokenizer, basic_tokenizer, split=split)
 
 
 if __name__ == "__main__":
