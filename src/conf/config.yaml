@@ -11,6 +11,9 @@ use_wandb: False
 # Here we override the longformer_large encoder with longformer_ontonotes encoder uploaded on Huggingface
 override_encoder: False
 
+# USeful for testing models with different memory architecture than the one trained on
+override_memory: False
+
 defaults:
   - _self_
   - datasets: litbank
