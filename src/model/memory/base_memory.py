@@ -42,9 +42,8 @@ class BaseMemory(nn.Module):
 		return next(self.mem_coref_mlp.parameters()).device
 
 	def initialize_memory(self, mem: Tensor = None, ent_counter: Tensor = None,
-	                      last_mention_start: Tensor = None) -> Tuple[Tensor, Tensor, Tensor]:
-		"""Method to initialize the clusters and related bookkeeping varioables."""
-
+	                      last_mention_start: Tensor = None, **kwargs) -> Tuple[Tensor, Tensor, Tensor]:
+		"""Method to initialize the clusters and related bookkeeping variables."""
 		# Check for unintialized memory
 		if mem is None or ent_counter is None or last_mention_start is None:
 			mem = torch.zeros(1, self.mem_size).to(self.device)
