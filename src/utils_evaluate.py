@@ -97,6 +97,8 @@ def full_coref_evaluation(
 			if cluster_threshold != 1:
 				# For cluster threshold 1, raw and processed clusters are one and the same
 				log_example["raw_predicted_clusters"] = raw_predicted_clusters
+
+			log_example["gt_actions"] = gt_actions
 			log_example["pred_actions"] = pred_actions
 			log_example["predicted_clusters"] = predicted_clusters
 
