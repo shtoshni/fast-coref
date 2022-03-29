@@ -278,6 +278,16 @@ class MentionProposalModule(nn.Module):
 
 		# Stack the starts and ends to get the mention tuple
 		output_dict['ments'] = torch.stack((pred_starts, pred_ends), dim=1)
+		num_uniq = torch.unique(output_dict['ments'], dim=0).shape[0]
+		num_total = output_dict['ments'].shape[0]
+
+		if num_total != num_uniq:
+			print(document)
+			print(output_dict['ments'])
+			import sys
+			sys.exit(1)
+
+
 		# Get mention embeddings
 		mention_embs: Tensor = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
 		output_dict['ment_emb_list'] = torch.unbind(mention_embs, dim=0)
