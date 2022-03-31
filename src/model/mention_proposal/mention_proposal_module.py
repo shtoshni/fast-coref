@@ -166,7 +166,6 @@ class MentionProposalModule(nn.Module):
 
 		# Follows word_boundary
 		# Padding the subtoken_map because it will be useful for end of span check.
-		# In case the candidate happens to end at the last token of the document
 		subtoken_map: Tensor = torch.tensor(
 			document["subtoken_map"] + [-1] * (self.config.mention_params.max_span_width + 1), device=self.device)
 
