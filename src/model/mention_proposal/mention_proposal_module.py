@@ -160,10 +160,21 @@ class MentionProposalModule(nn.Module):
 		corr_cand_ends: Tensor = torch.min(cand_ends, torch.ones_like(cand_ends, device=self.device) * (num_words - 1))
 		cand_end_sent_indices: Tensor = sent_map[corr_cand_ends]
 
-		# End before document ends & Same sentence
+		# End before document ends & same sentence
 		constraint1: Tensor = (cand_ends < num_words)
 		constraint2: Tensor = (cand_start_sent_indices == cand_end_sent_indices)
-		cand_mask: Tensor = constraint1 & constraint2
+
+		# Follows word_boundary
+		# Padding the subtoken_map because it will be useful for end of span check.
+		# In case the candidate happens to end at the last token of the document
+		subtoken_map: Tensor = (document["subtoken_map"] + [-1]).to(self.device)
+
+		# Check that the word corresponding to the previous subword is not the same at span start
+		constraint3 = (subtoken_map[cand_starts] != subtoken_map[cand_starts - 1])
+		# Check that the word corresponding to the next subword is not the same at span end
+		constraint4 = (subtoken_map[cand_ends] != subtoken_map[cand_ends + 1])
+
+		cand_mask: Tensor = constraint1 & constraint2 & constraint3 & constraint4
 		flat_cand_mask = cand_mask.reshape(-1)
 
 		# Filter and flatten the candidate end points
@@ -278,15 +289,6 @@ class MentionProposalModule(nn.Module):
 
 		# Stack the starts and ends to get the mention tuple
 		output_dict['ments'] = torch.stack((pred_starts, pred_ends), dim=1)
-		num_uniq = torch.unique(output_dict['ments'], dim=0).shape[0]
-		num_total = output_dict['ments'].shape[0]
-
-		if num_total != num_uniq:
-			print(document)
-			print(output_dict['ments'])
-			import sys
-			sys.exit(1)
-
 
 		# Get mention embeddings
 		mention_embs: Tensor = self.get_span_embeddings(encoded_doc, pred_starts, pred_ends)
