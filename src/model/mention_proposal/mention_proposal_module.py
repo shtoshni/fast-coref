@@ -167,7 +167,7 @@ class MentionProposalModule(nn.Module):
 		# Follows word_boundary
 		# Padding the subtoken_map because it will be useful for end of span check.
 		# In case the candidate happens to end at the last token of the document
-		subtoken_map: Tensor = (document["subtoken_map"] + [-1]).to(self.device)
+		subtoken_map: Tensor = torch.tensor(document["subtoken_map"] + [-1], device=self.device)
 
 		# Check that the word corresponding to the previous subword is not the same at span start
 		constraint3 = (subtoken_map[cand_starts] != subtoken_map[cand_starts - 1])
