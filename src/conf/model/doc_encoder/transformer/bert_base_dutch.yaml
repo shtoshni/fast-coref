@@ -1,0 +1,5 @@
+name: 'bert-dutch'
+model_size: 'base'
+model_str:  'GroNLP/bert-base-dutch-cased'
+max_encoder_segment_len: 512
+max_segment_len: 512

@@ -1,0 +1,9 @@
+ontonotes:
+  name: "Sonar"
+  cluster_threshold: 2  # Singletons are ignored for evaluation (also not annotated)
+  canonical_cluster_threshold: 2
+  targeted_eval: False
+  num_train_docs: 581
+  num_dev_docs: 135
+  num_test_docs: 145
+  has_conll: True

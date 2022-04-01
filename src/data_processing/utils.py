@@ -92,7 +92,8 @@ def parse_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('input_dir', type=str, help="Input directory.")
 	parser.add_argument('-output_dir', type=str, default=None, help="Output directory.")
-	parser.add_argument('-model', default='longformer', choices=['longformer', 'bert', 'roberta', 'spanbert'],
+	parser.add_argument('-model', default='longformer',
+	                    choices=['longformer', 'bert', 'roberta', 'spanbert', 'bigbird', 'bert-dutch'],
 	                    type=str, help="Model type.")
 	parser.add_argument('-seg_len', default=4096, type=int, help="Max. segment length")
 	parser.add_argument('-add_speaker', default=False, action="store_true",
