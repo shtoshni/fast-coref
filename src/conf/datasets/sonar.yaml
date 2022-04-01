@@ -1,4 +1,4 @@
-ontonotes:
+sonar:
   name: "Sonar"
   cluster_threshold: 2  # Singletons are ignored for evaluation (also not annotated)
   canonical_cluster_threshold: 2
