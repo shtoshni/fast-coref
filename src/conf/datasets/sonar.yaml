@@ -1,7 +1,7 @@
 sonar:
   name: "Sonar"
-  cluster_threshold: 2  # Singletons are ignored for evaluation (also not annotated)
-  canonical_cluster_threshold: 2
+  cluster_threshold: 1  # Singletons are ignored for evaluation (also not annotated)
+  canonical_cluster_threshold: 1
   targeted_eval: False
   num_train_docs: 581
   num_dev_docs: 135
