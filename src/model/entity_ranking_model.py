@@ -215,8 +215,11 @@ class EntityRankingModel(nn.Module):
 		if max_training_segments is None:
 			seg_range = [0, num_segments]
 		else:
-			start_seg = random.randint(0, num_segments - max_training_segments)
-			seg_range = [start_seg, start_seg + max_training_segments]
+			if num_segments > max_training_segments:
+				start_seg = random.randint(0, num_segments - max_training_segments)
+				seg_range = [start_seg, start_seg + max_training_segments]
+			else:
+				seg_range = [0, num_segments]
 
 		# Initialize lists to track all the mentions predicted across the chunks
 		pred_mentions_list, mention_emb_list = [], []
