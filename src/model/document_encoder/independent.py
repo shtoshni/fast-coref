@@ -41,3 +41,4 @@ class IndependentDocEncoder(BaseDocEncoder):
         encoded_output = torch.cat(unpadded_encoded_output, dim=0)
 
         return encoded_output
+
