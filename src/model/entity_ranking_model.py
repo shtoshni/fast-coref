@@ -223,7 +223,7 @@ class EntityRankingModel(nn.Module):
 		init_token_offset = sum([len(document["sentences"][idx]) for idx in range(0, seg_range[0])])
 		token_offset = init_token_offset
 
-		logger.info(f"Token offset: {token_offset}, # of sentences: {num_segments}")
+		# logger.info(f"Token offset: {token_offset}, # of sentences: {num_segments}")
 
 		# Metadata such as document genre can be used by model for clustering
 		metadata = self.get_metadata(document)
@@ -357,7 +357,7 @@ class EntityRankingModel(nn.Module):
 
 			pred_mentions_list.extend(cur_pred_mentions.tolist())
 			mention_scores.extend(proposer_output_dict['ment_scores'].tolist())
-			print(cur_pred_mentions)
+
 			# Pass along entity clusters from previous chunks while processing next chunks
 			cur_pred_actions, entity_cluster_states = self.memory_net(
 				cur_pred_mentions, proposer_output_dict['ment_emb_list'], metadata,
