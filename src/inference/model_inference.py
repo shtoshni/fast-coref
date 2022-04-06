@@ -1,9 +1,8 @@
 import torch
 from os import path
-import spacy
 from model.utils import action_sequences_to_clusters
 from model.entity_ranking_model import EntityRankingModel
-from inference.tokenize_doc import tokenize_and_segment_doc
+from inference.tokenize_doc import tokenize_and_segment_doc, basic_tokenize_doc
 from omegaconf import OmegaConf
 from transformers import AutoModel, AutoTokenizer
 
@@ -22,7 +21,6 @@ class Inference:
 
 		self.max_segment_len = self.config.model.doc_encoder.transformer.max_segment_len
 		self.tokenizer = self.model.mention_proposer.doc_encoder.tokenizer
-		self.basic_tokenizer = spacy.load("en_core_web_sm")
 
 	def _load_model(self, checkpoint, model_path, encoder_name=None):
 		self.model.load_state_dict(checkpoint['model'], strict=False)
@@ -46,9 +44,17 @@ class Inference:
 
 	@torch.no_grad()
 	def perform_coreference(self, document):
-		if isinstance(document, str):
+		if isinstance(document, list):
+			# Document is already tokenized
 			tokenized_doc = tokenize_and_segment_doc(
-				document, self.tokenizer, self.basic_tokenizer, max_segment_len=self.max_segment_len)
+				document, self.tokenizer, max_segment_len=self.max_segment_len)
+		elif isinstance(document, str):
+			# Raw document string. First perform basic tokenization before further tokenization.
+			import spacy
+			basic_tokenizer = spacy.load("en_core_web_sm")
+			basic_tokenized_doc = basic_tokenize_doc(document, basic_tokenizer)
+			tokenized_doc = tokenize_and_segment_doc(
+				basic_tokenized_doc, self.tokenizer, max_segment_len=self.max_segment_len)
 		elif isinstance(document, dict):
 			tokenized_doc = document
 		else:
