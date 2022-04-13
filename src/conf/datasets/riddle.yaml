@@ -1,4 +1,4 @@
-sonar:
+riddle:
   name: "Riddle"
   cluster_threshold: 1
   canonical_cluster_threshold: 1
