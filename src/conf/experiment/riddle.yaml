@@ -1,7 +1,7 @@
 # @package _global_
 
 defaults:
-  - override /datasets: sonar
+  - override /datasets: riddle
   - override /trainer: train.yaml
   - override /model/doc_encoder/transformer: bert_base_dutch
 
