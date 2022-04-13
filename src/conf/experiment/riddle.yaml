@@ -6,6 +6,6 @@ defaults:
   - override /model/doc_encoder/transformer: bert_base_dutch
 
 trainer:
-  log_frequency: 100
+  log_frequency: 10
   patience: 10
   eval_per_k_steps: 100
