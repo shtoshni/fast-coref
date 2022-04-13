@@ -1,9 +1,9 @@
 sonar:
-  name: "Sonar"
+  name: "Riddle"
   cluster_threshold: 1
   canonical_cluster_threshold: 1
   targeted_eval: False
-  num_train_docs: 581
-  num_dev_docs: 135
-  num_test_docs: 145
+  num_train_docs: 23
+  num_dev_docs: 5
+  num_test_docs: 5
   has_conll: True
