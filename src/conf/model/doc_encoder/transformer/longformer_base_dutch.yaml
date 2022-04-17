@@ -1,4 +1,4 @@
-name: 'longformer_dutch'
+name: 'longformer-dutch'
 model_size: 'base'
 model_str:  '/share/data/speech/shtoshni/research/pretrained_lms/longformer-base-dutch-4096'
 max_encoder_segment_len: 4096
