@@ -1,3 +1,5 @@
+# @package _global_
+
 defaults:
   - override /datasets: riddle
   - override /trainer: train.yaml
