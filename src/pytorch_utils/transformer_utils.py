@@ -20,6 +20,10 @@ class BertLongSelfAttention(LongformerSelfAttention):
         return super().forward(
             hidden_states, attention_mask=attention_mask)
 
+    def self(self, hidden_states, attention_mask=None):
+        return super().forward(
+            hidden_states, attention_mask=attention_mask)
+
 
 class BertLong(BertForMaskedLM):
     def __init__(self, config):
@@ -27,4 +31,4 @@ class BertLong(BertForMaskedLM):
         for i, layer in enumerate(self.bert.encoder.layer):
             # replace the `modeling_bert.BertSelfAttention` object with
             # `LongformerSelfAttention`
-            layer.attention.self = BertLongSelfAttention(config, layer_id=i)
+            layer.attention = BertLongSelfAttention(config, layer_id=i)
