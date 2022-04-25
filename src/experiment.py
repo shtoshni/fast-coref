@@ -308,7 +308,7 @@ class Experiment:
 				else:
 					train_data += dataset_train_data
 
-			print(model)
+			# print(model)
 			# Shuffle the concatenated examples again
 			np.random.shuffle(train_data)
 			logger.info("Per epoch training steps: %d" % len(train_data))

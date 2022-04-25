@@ -16,11 +16,9 @@ class BertLongSelfAttention(LongformerSelfAttention):
         self,
         hidden_states,
         attention_mask=None,
-        output_attentions=False,
     ):
         return super().forward(
-            hidden_states, attention_mask=attention_mask,
-            output_attentions=output_attentions)
+            hidden_states, attention_mask=attention_mask)
 
 
 class BertLong(BertForMaskedLM):
