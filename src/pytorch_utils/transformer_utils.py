@@ -20,7 +20,7 @@ class BertLongSelfAttention(LongformerSelfAttention):
         return super().forward(
             hidden_states, attention_mask=attention_mask)
 
-    def self(self, hidden_states, attention_mask=None):
+    def self(self, hidden_states, attention_mask=None, head_mask=None, **kwargs):
         return super().forward(
             hidden_states, attention_mask=attention_mask)
 
