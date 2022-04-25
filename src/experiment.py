@@ -287,6 +287,7 @@ class Experiment:
 		"""
 
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
+		print(model)
 		model.train()
 
 		optimizer_config, train_config = self.config.optimizer, self.config.trainer
@@ -308,7 +309,6 @@ class Experiment:
 				else:
 					train_data += dataset_train_data
 
-			# print(model)
 			# Shuffle the concatenated examples again
 			np.random.shuffle(train_data)
 			logger.info("Per epoch training steps: %d" % len(train_data))

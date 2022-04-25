@@ -23,7 +23,6 @@ class BertLongSelfAttention(LongformerSelfAttention):
 
 class BertLong(BertForMaskedLM):
     def __init__(self, config):
-        print(config)
         super().__init__(config)
         for i, layer in enumerate(self.bert.encoder.layer):
             # replace the `modeling_bert.BertSelfAttention` object with
