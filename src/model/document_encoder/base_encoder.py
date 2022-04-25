@@ -28,8 +28,7 @@ class BaseDocEncoder(nn.Module):
 
         if "longformer-base-dutch" in model_str:
             self.lm_encoder: PreTrainedModel = BertLong.from_pretrained(
-                pretrained_model_name_or_path=model_str, output_hidden_states=False,
-                add_pooling_layer=False)
+                pretrained_model_name_or_path=model_str)
             print("Hello")
         else:
             self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
