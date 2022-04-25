@@ -10,6 +10,7 @@ from torch import Tensor
 class IndependentDocEncoder(BaseDocEncoder):
     def __init__(self, config: DictConfig):
         super(IndependentDocEncoder, self).__init__(config)
+        # print(self.lm_encoder)
 
     def forward(self, document: Dict) -> Tensor:
         doc_tens = document["tensorized_sent"]

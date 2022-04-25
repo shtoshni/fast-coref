@@ -84,6 +84,7 @@ class Experiment:
 			self.model.cuda()
 
 		# Print model
+		# print(self.model)
 		utils.print_model_info(self.model)
 		sys.stdout.flush()
 
@@ -307,6 +308,7 @@ class Experiment:
 				else:
 					train_data += dataset_train_data
 
+			print(model)
 			# Shuffle the concatenated examples again
 			np.random.shuffle(train_data)
 			logger.info("Per epoch training steps: %d" % len(train_data))

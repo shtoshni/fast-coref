@@ -30,10 +30,14 @@ class BaseDocEncoder(nn.Module):
             self.lm_encoder: PreTrainedModel = BertLong.from_pretrained(
                 pretrained_model_name_or_path=model_str, output_hidden_states=False,
                 add_pooling_layer=False)
+            print("Hello")
         else:
             self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
                 pretrained_model_name_or_path=model_str, output_hidden_states=False,
                 add_pooling_layer=False)
+
+        print(model_str)
+        print(self.lm_encoder)
 
         if gradient_checkpointing:
             self.lm_encoder.gradient_checkpointing_enable()
