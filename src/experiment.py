@@ -83,8 +83,6 @@ class Experiment:
 		if torch.cuda.is_available():
 			self.model.cuda()
 
-		# Print model
-		# print(self.model)
 		utils.print_model_info(self.model)
 		sys.stdout.flush()
 
@@ -287,7 +285,6 @@ class Experiment:
 		"""
 
 		model, optimizer, scheduler, scaler = self.model, self.optimizer, self.optim_scheduler, self.scaler
-		print(model)
 		model.train()
 
 		optimizer_config, train_config = self.config.optimizer, self.config.trainer
