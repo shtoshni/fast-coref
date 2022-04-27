@@ -1,0 +1,5 @@
+name: 'bigbird-dutch'
+model_size: 'base'
+model_str:  "flax-community/pino-bigbird-roberta-base"
+max_encoder_segment_len: 4096
+max_segment_len: 4096

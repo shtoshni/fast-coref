@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - override /datasets: riddle
+  - override /trainer: train.yaml
+  - override /model/doc_encoder/transformer: bigbird_base_dutch
+
+trainer:
+  log_frequency: 10
+  patience: 10
+  eval_per_k_steps: 100
