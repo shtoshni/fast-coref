@@ -1,5 +1,5 @@
 import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
+from transformers import AutoModel, BigBirdModel, AutoTokenizer, PreTrainedTokenizerFast, PreTrainedModel
 import torch
 
 from omegaconf import DictConfig
@@ -26,9 +26,14 @@ class BaseDocEncoder(nn.Module):
 
         model_str: str = config.transformer.model_str
 
-        self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
-            pretrained_model_name_or_path=model_str, output_hidden_states=False,
-            add_pooling_layer=False)
+        if 'pino-bigbird' in model_str:
+            self.lm_encoder: PreTrainedModel = BigBirdModel.from_pretrained(
+                model_str, attention_type="original_full", output_hidden_states=False,
+                add_pooling_layer=False)
+        else:
+            self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
+                pretrained_model_name_or_path=model_str, output_hidden_states=False,
+                add_pooling_layer=False)
 
         if gradient_checkpointing:
             self.lm_encoder.gradient_checkpointing_enable()
