@@ -26,17 +26,9 @@ class BaseDocEncoder(nn.Module):
 
         model_str: str = config.transformer.model_str
 
-        if "longformer-base-dutch" in model_str:
-            self.lm_encoder: PreTrainedModel = BertLong.from_pretrained(
-                pretrained_model_name_or_path=model_str, output_hidden_states=False,)
-            gradient_checkpointing = False
-        else:
-            self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
-                pretrained_model_name_or_path=model_str, output_hidden_states=False,
-                add_pooling_layer=False)
-
-        print(model_str)
-        print(self.lm_encoder)
+        self.lm_encoder: PreTrainedModel = AutoModel.from_pretrained(
+            pretrained_model_name_or_path=model_str, output_hidden_states=False,
+            add_pooling_layer=False)
 
         if gradient_checkpointing:
             self.lm_encoder.gradient_checkpointing_enable()
