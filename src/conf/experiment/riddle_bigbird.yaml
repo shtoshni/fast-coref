@@ -9,3 +9,4 @@ trainer:
   log_frequency: 10
   patience: 10
   eval_per_k_steps: 100
+  max_evals: 50
