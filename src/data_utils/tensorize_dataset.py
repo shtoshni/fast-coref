@@ -18,46 +18,22 @@ class TensorizeDataset:
 
 		return tensorized_data
 
-	def process_sentence(self, sentence: List) -> List:
-		return [self.tokenizer.cls_token_id] + sentence + [self.tokenizer.sep_token_id]
+	def process_segment(self, segment: List) -> List:
+		return [self.tokenizer.cls_token_id] + segment + [self.tokenizer.sep_token_id]
 
 	def tensorize_instance_independent(self, document: Dict, training: bool = False) -> Dict:
-		sentences: List[List[int]] = document["sentences"]
+		segments: List[List[int]] = document["sentences"]
 		clusters: List = document.get("clusters", [])
 		sentence_map: List[int] = document["sentence_map"]
 		subtoken_map: List[int] = document["subtoken_map"]
 
-		if training:
-			if len(sentences) > 1:
-				# Truncate to prefix - happens rarely for segment length of 4096
-				# For segments <= 2048 it does happen reasonably frequently for LitBank and
-				# a few documents in OntoNotes.
-				sentences = sentences[:1]
-				num_words: int = len(sentences[0])
-				sentence_map = sentence_map[:num_words]
-				subtoken_map = subtoken_map[:num_words]
-				clusters = []
-				for orig_cluster in document["clusters"]:
-					cluster = []
-					for ment_start, ment_end in orig_cluster:
-						if ment_end < num_words:
-							cluster.append((ment_start, ment_end))
+		tensorized_sent: List[Tensor] = [
+			torch.unsqueeze(torch.tensor(self.process_segment(sent), device=self.device), dim=0)
+			for sent in segments]
 
-					if len(cluster):
-						clusters.append(cluster)
-
-			tensorized_sent: Union[List[Tensor], Tensor] = torch.unsqueeze(
-				torch.tensor(self.process_sentence(sentences[0]), device=self.device), dim=0)
-
-		else:
-			# Streaming inference
-			tensorized_sent = [
-				torch.unsqueeze(torch.tensor(self.process_sentence(sent), device=self.device), dim=0)
-				for sent in sentences]
-
-		sent_len_list = [len(sent) for sent in sentences]
+		sent_len_list = [len(sent) for sent in segments]
 		output_dict = {"tensorized_sent": tensorized_sent,
-		               "sentences": sentences,
+		               "sentences": segments,
 		               "sent_len_list": sent_len_list,
 		               "doc_key": document.get("doc_key", None),
 		               "clusters": clusters,

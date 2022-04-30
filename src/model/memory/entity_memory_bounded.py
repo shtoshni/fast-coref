@@ -90,7 +90,7 @@ class EntityMemoryBounded(BaseMemory):
 			# No space - The new entity is not "fertile" enough
 			return output + (-1, 'n',)
 
-	def forward_training(self, ment_boundaries: List[List[Tensor]], mention_emb_list: List[Tensor],
+	def forward_training(self, ment_boundaries: Tensor, mention_emb_list: List[Tensor],
 	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> Tuple[List[Tensor], List[Tensor]]:
 		"""
 		Forward pass during coreference model training where we use teacher-forcing.
@@ -173,7 +173,7 @@ class EntityMemoryBounded(BaseMemory):
 		return coref_new_list, new_ignore_list
 
 	def forward(
-					self, ment_boundaries: List[List[Tensor]], mention_emb_list: Tensor, metadata: Dict,
+					self, ment_boundaries: Tensor, mention_emb_list: Tensor, metadata: Dict,
 					memory_init: Dict = None) -> Tuple[List[Tuple[int, str]], Dict]:
 		"""Forward pass for clustering entity mentions during inference/evaluation.
 
