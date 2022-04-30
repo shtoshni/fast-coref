@@ -58,6 +58,11 @@ def main_train(config):
 	if config.paths.best_model_path is None and (config.paths.model_path is not None):
 		config.paths.best_model_path = config.paths.model_path
 
+	# Dump config file
+	config_file = path.join(config.paths.model_dir, "config.json")
+	with open(config_file, 'w') as f:
+		f.write(json.dumps(OmegaConf.to_container(config), indent=4, sort_keys=True))
+
 	return model_name
 
 
