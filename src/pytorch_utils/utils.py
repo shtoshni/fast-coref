@@ -13,12 +13,12 @@ def print_model_info(model):
             total_params += local_params
             if not ("lm_encoder." in name):
                 print(name, param.data.size())
-    print("\nTotal Params:{:.2f} (in millions)".format(total_params/10**6))
+    print("\nTotal Params:{:.2f} (in millions)".format(total_params / 10**6))
 
 
 def enough_memory():
     if torch.cuda.is_available():
-        memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024 ** 3)
+        memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (1024**3)
         if memory_in_gb > 40:
             return True
 
@@ -36,10 +36,14 @@ def get_sequence_mask(sequence_len):
 
 
 def get_span_mask(start_ids, end_ids, max_len):
-    tmp = torch.arange(max_len, device=start_ids.device).unsqueeze(0).expand(start_ids.shape[0], -1)
+    tmp = (
+        torch.arange(max_len, device=start_ids.device)
+        .unsqueeze(0)
+        .expand(start_ids.shape[0], -1)
+    )
     batch_start_ids = start_ids.unsqueeze(1).expand_as(tmp)
     batch_end_ids = end_ids.unsqueeze(1).expand_as(tmp)
-    mask = ((tmp >= batch_start_ids).float() * (tmp <= batch_end_ids).float())
+    mask = (tmp >= batch_start_ids).float() * (tmp <= batch_end_ids).float()
     return mask
 
 
@@ -54,7 +58,7 @@ def check_nan_grad(model):
 
 
 def get_l2_norm(model, debug=False):
-    total_l2_norm = {'param': 0, 'grad': 0}
+    total_l2_norm = {"param": 0, "grad": 0}
     param_norm_list = []
     for name, param in model.named_parameters():
         if param.grad is not None:
@@ -62,16 +66,17 @@ def get_l2_norm(model, debug=False):
             if torch.isnan(param_norm):
                 print("NaN parameter:", name)
             param_norm_list.append((name, param_norm.item()))
-            total_l2_norm['param'] += torch.norm(param.data, p=2).item()
-            total_l2_norm['grad'] += torch.norm(param.grad.data, p=2).item()
+            total_l2_norm["param"] += torch.norm(param.data, p=2).item()
+            total_l2_norm["grad"] += torch.norm(param.grad.data, p=2).item()
     if debug:
-        print("Summation of L2 norm: %.3f" % total_l2_norm['param'])
+        print("Summation of L2 norm: %.3f" % total_l2_norm["param"])
         # Sort param list by L2 norm
-        sorted_param_list = sorted(param_norm_list, key=lambda x: x[1],
-                                   reverse=True)
+        sorted_param_list = sorted(param_norm_list, key=lambda x: x[1], reverse=True)
         topk_list = sorted_param_list[:5]
         for name, param_norm in topk_list:
-            print("Name: %s\tNorm (%%): %.3f\tNorm: %.3f"
-                  % (name, param_norm*100/total_l2_norm['param'], param_norm))
+            print(
+                "Name: %s\tNorm (%%): %.3f\tNorm: %.3f"
+                % (name, param_norm * 100 / total_l2_norm["param"], param_norm)
+            )
 
     return total_l2_norm

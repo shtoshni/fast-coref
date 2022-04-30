@@ -19,6 +19,8 @@ class LabelSmoothingLoss(nn.Module):
         if weight is None:
             loss = torch.mean(torch.sum(-true_dist * pred, dim=self.dim))
         else:
-            loss = torch.sum(-true_dist * pred * weight, dim=self.dim) / torch.sum(weight)
+            loss = torch.sum(-true_dist * pred * weight, dim=self.dim) / torch.sum(
+                weight
+            )
 
         return loss
