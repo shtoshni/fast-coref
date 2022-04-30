@@ -11,6 +11,7 @@ import wandb
 from experiment import Experiment
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
+logger = logging.getLogger()
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
@@ -27,6 +28,9 @@ def get_model_name(config):
 		dataset_name = 'joint'
 	else:
 		dataset_name = list(config.datasets.keys())[0]
+		if dataset_name == 'litbank':
+			cross_val_split = config.datasets[dataset_name].cross_val_split
+			dataset_name += f'_cv_{cross_val_split}'
 
 	model_name = f"{dataset_name}_{model_hash}"
 	return model_name
@@ -84,10 +88,15 @@ def main(config):
 
 	if config.use_wandb:
 		# Wandb Initialization
-		wandb.init(
-			id=model_name, project="Coreference", config=dict(config), resume=True,
-		)
+		try:
+			wandb.init(
+				id=model_name, project="Coreference", config=dict(config), resume=True,
+			)
+		except:
+			# Turn off wandb
+			config.use_wandb = False
 
+	logger.info(f"Model name: {model_name}")
 	Experiment(config)
 
 

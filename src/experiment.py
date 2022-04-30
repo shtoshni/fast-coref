@@ -11,7 +11,7 @@ import wandb
 from omegaconf import OmegaConf
 from os import path
 from collections import OrderedDict
-from transformers import get_linear_schedule_with_warmup, AdamW
+from transformers import get_linear_schedule_with_warmup
 from transformers import AutoModel, AutoTokenizer
 
 from data_utils.utils import load_dataset, load_eval_dataset
@@ -201,7 +201,6 @@ class Experiment:
 			random.seed(self.config.seed)
 
 			logger.info("Model initialized\n")
-			utils.print_model_info(self.model)
 			sys.stdout.flush()
 
 	def _is_training_remaining(self):
@@ -266,7 +265,7 @@ class Experiment:
 				 'lr': optimizer_config.fine_tune_lr, 'weight_decay': 0.0}
 			]
 
-			self.optimizer['doc'] = AdamW(grouped_param, lr=optimizer_config.fine_tune_lr, eps=1e-6)
+			self.optimizer['doc'] = torch.optim.AdamW(grouped_param, lr=optimizer_config.fine_tune_lr, eps=1e-6)
 
 			# Scheduler for document encoder
 			num_warmup_steps = int(0.1 * train_config.num_training_steps)
