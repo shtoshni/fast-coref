@@ -15,7 +15,7 @@ class EntityMemory(BaseMemory):
 		super(EntityMemory, self).__init__(config, span_emb_size, drop_module)
 		self.mem_type: DictConfig = config.mem_type
 
-	def forward_training(self, ment_boundaries: List[List[Tensor]], mention_emb_list: List[Tensor],
+	def forward_training(self, ment_boundaries: Tensor, mention_emb_list: List[Tensor],
 	                     gt_actions: List[Tuple[int, str]], metadata: Dict) -> List[Tensor]:
 		"""
 		Forward pass during coreference model training where we use teacher-forcing.
@@ -72,7 +72,7 @@ class EntityMemory(BaseMemory):
 		return coref_new_list
 
 	def forward(
-					self, ment_boundaries: List[List[Tensor]], mention_emb_list: Tensor, metadata: Dict,
+					self, ment_boundaries: Tensor, mention_emb_list: Tensor, metadata: Dict,
 					memory_init: Dict = None) -> Tuple[List[Tuple[int, str]], Dict]:
 		"""Forward pass for clustering entity mentions during inference/evaluation.
 

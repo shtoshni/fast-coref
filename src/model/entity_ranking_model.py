@@ -12,6 +12,7 @@ from torch import Tensor
 from transformers import PreTrainedTokenizerFast
 
 import logging
+import random
 
 logging.basicConfig(format='%(asctime)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger()
@@ -181,6 +182,23 @@ class EntityRankingModel(nn.Module):
 
 		return coref_loss
 
+	@staticmethod
+	def get_filtered_clusters(clusters, init_token_offset, final_token_offset, with_offset=True):
+		"""Filter clusters from a document given the token offsets."""
+		filt_clusters = []
+		for orig_cluster in clusters:
+			cluster = []
+			for ment_start, ment_end in orig_cluster:
+				if ment_start >= init_token_offset and ment_end < final_token_offset:
+					if with_offset:
+						cluster.append((ment_start, ment_end))
+					else:
+						cluster.append((ment_start - init_token_offset, ment_end - init_token_offset))
+			if len(cluster):
+				filt_clusters.append(cluster)
+
+		return filt_clusters
+
 	def forward_training(self, document: Dict) -> Dict:
 		"""Forward pass for training.
 
@@ -191,46 +209,89 @@ class EntityRankingModel(nn.Module):
 			loss_dict (Dict): Loss dictionary containing the losses of different stages of the model.
 		"""
 
-		# Initialize loss dictionary
-		loss_dict = {'total': None}
+		# Truncate document for training
+		max_training_segments = self.train_config.get("max_training_segments", None)
+		num_segments = len(document["sentences"])
+		if max_training_segments is None:
+			seg_range = [0, num_segments]
+		else:
+			if num_segments > max_training_segments:
+				start_seg = random.randint(0, num_segments - max_training_segments)
+				seg_range = [start_seg, start_seg + max_training_segments]
+			else:
+				seg_range = [0, num_segments]
 
-		# Encode documents and get mentions
-		proposer_output_dict = self.mention_proposer(document)
-		pred_mentions = proposer_output_dict.get('ments', None)
-		# Only cluster if there are mentions to cluster over
-		if pred_mentions is None:
-			return loss_dict
+		# Initialize lists to track all the mentions predicted across the chunks
+		pred_mentions_list, mention_emb_list = [], []
+		init_token_offset = sum([len(document["sentences"][idx]) for idx in range(0, seg_range[0])])
+		token_offset = init_token_offset
 
-		mention_emb_list = proposer_output_dict['ment_emb_list']
-		pred_mentions_list = pred_mentions.tolist()
-
-		# Get ground truth clustering mentions
-		gt_actions: List[Tuple[int, str]] = get_gt_actions(
-			pred_mentions_list, document, self.config.memory.mem_type)
+		# logger.info(f"Token offset: {token_offset}, # of sentences: {num_segments}")
 
 		# Metadata such as document genre can be used by model for clustering
-		metadata: Dict = self.get_metadata(document)
+		metadata = self.get_metadata(document)
 
+		# Initialize the mention loss
+		ment_loss = None
 		# Bounded memory loss
 		ignore_loss = None
 
-		# Perform teacher-forced clustering to get gt action probabilities
+		# Step 1: Predict all the mentions
+		for idx in range(seg_range[0], seg_range[1]):
+			num_tokens = len(document["sentences"][idx])
+
+			cur_doc_slice = {
+				"tensorized_sent": document["tensorized_sent"][idx],
+				"sentence_map": document["sentence_map"][token_offset: token_offset + num_tokens],
+				"subtoken_map": document["subtoken_map"][token_offset: token_offset + num_tokens],
+				"sent_len_list": [document["sent_len_list"][idx]],
+				"clusters": self.get_filtered_clusters(
+					document["clusters"], token_offset, token_offset + num_tokens, with_offset=False),
+				"doc_key": document["doc_key"],
+			}
+
+			proposer_output_dict = self.mention_proposer(cur_doc_slice)
+			if proposer_output_dict.get('ments', None) is None:
+				token_offset += num_tokens
+				continue
+
+			# Add the document offset to mentions predicted for the current chunk
+			cur_pred_mentions = proposer_output_dict.get('ments') + token_offset
+
+			pred_mentions_list.extend(cur_pred_mentions.tolist())
+			mention_emb_list.extend(proposer_output_dict['ment_emb_list'])
+			if 'ment_loss' in proposer_output_dict:
+				if ment_loss is None:
+					ment_loss = proposer_output_dict['ment_loss']
+				else:
+					ment_loss += proposer_output_dict['ment_loss']
+
+			# Update the document offset for next iteration
+			token_offset += num_tokens
+
+		# Step 2: Perform clustering
+		# Get clusters part of the truncated document
+		truncated_document_clusters = {
+			"clusters": self.get_filtered_clusters(document["clusters"], init_token_offset, token_offset)}
+		# Get ground truth clustering mentions
+		gt_actions: List[Tuple[int, str]] = get_gt_actions(
+			pred_mentions_list, truncated_document_clusters, self.config.memory.mem_type)
+
+		pred_mentions = torch.tensor(pred_mentions_list, device=self.device)
+
 		if self.mem_type == 'unbounded':
 			coref_new_list = self.memory_net.forward_training(
 				pred_mentions, mention_emb_list, gt_actions, metadata)
 		else:
 			coref_new_list, new_ignore_list = self.memory_net.forward_training(
 				pred_mentions, mention_emb_list, gt_actions, metadata)
+
 			if len(new_ignore_list):
 				ignore_loss = self.calculate_new_ignore_loss(new_ignore_list, gt_actions)
-				# new_ignore_tens = torch.stack(new_ignore_list, dim=0)
-				# new_ignore_indices = self.new_ignore_tuple_to_idx(gt_actions)
-				# new_ignore_indices = torch.tensor(new_ignore_indices, device=self.device)
-				# ignore_loss = self.ignore_loss_fn(new_ignore_tens, new_ignore_indices)
 
 		# Consolidate different losses in one dictionary
-		if 'ment_loss' in proposer_output_dict:
-			loss_dict = {'total': proposer_output_dict['ment_loss'], 'entity': proposer_output_dict['ment_loss']}
+		if ment_loss is not None:
+			loss_dict = {'total': ment_loss, 'entity': ment_loss}
 		else:
 			loss_dict = {'total': 0.0}
 
