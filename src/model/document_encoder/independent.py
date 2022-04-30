@@ -23,11 +23,15 @@ class IndependentDocEncoder(BaseDocEncoder):
         if num_chunks == 1:
             attn_mask = None
         else:
-            attn_mask = get_sequence_mask(torch.tensor(sent_len_list, device=self.device))
+            attn_mask = get_sequence_mask(
+                torch.tensor(sent_len_list, device=self.device)
+            )
 
         if not self.config.finetune:
             with torch.no_grad():
-                outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
+                outputs = self.lm_encoder(
+                    doc_tens, attention_mask=attn_mask
+                )  # C x L x E
         else:
             outputs = self.lm_encoder(doc_tens, attention_mask=attn_mask)  # C x L x E
 
@@ -35,10 +39,8 @@ class IndependentDocEncoder(BaseDocEncoder):
 
         unpadded_encoded_output = []
         for idx, sent_len in enumerate(sent_len_list):
-            unpadded_encoded_output.append(
-                encoded_repr[idx, 1:sent_len+1, :])
+            unpadded_encoded_output.append(encoded_repr[idx, 1 : sent_len + 1, :])
 
         encoded_output = torch.cat(unpadded_encoded_output, dim=0)
 
         return encoded_output
-

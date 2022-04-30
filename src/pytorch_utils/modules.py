@@ -2,8 +2,15 @@ import torch.nn as nn
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size,
-                 num_hidden_layers=1, bias=False, drop_module=None):
+    def __init__(
+        self,
+        input_size,
+        hidden_size,
+        output_size,
+        num_hidden_layers=1,
+        bias=False,
+        drop_module=None,
+    ):
         super(MLP, self).__init__()
         self.layer_list = []
 
