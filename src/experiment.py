@@ -589,8 +589,8 @@ class Experiment:
                 if self.config.use_wandb:
                     self._wandb_log(result_dict, dataset=dataset, split=split)
 
-                output_dict[f"{dataset}_{split}"] = result_dict
-                perf_summary[f"{dataset}_{split}"] = result_dict["fscore"]
+                output_dict[split] = result_dict
+                perf_summary[split] = result_dict["fscore"]
 
             if perf_file is not None:
                 json.dump(output_dict, open(perf_file, "w"), indent=2)
