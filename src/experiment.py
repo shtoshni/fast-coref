@@ -566,11 +566,14 @@ class Experiment:
             logger.info("\n")
             logger.info("%s" % split.capitalize())
 
+            output_dict = dict(base_output_dict)
+            perf_file = None
+
             for dataset in self.data_iter_map.get(split, []):
                 dataset_dir = path.join(self.config.paths.model_dir, dataset)
                 if not path.exists(dataset_dir):
                     os.makedirs(dataset_dir)
-                perf_file = path.join(dataset_dir, "perf.json")
+                perf_file = path.join(dataset_dir, f"perf.json")
 
                 logger.info("Dataset: %s\n" % self.config.datasets[dataset].name)
 
@@ -586,14 +589,14 @@ class Experiment:
                 if self.config.use_wandb:
                     self._wandb_log(result_dict, dataset=dataset, split=split)
 
-                output_dict = dict(base_output_dict)
                 output_dict[f"{dataset}_{split}"] = result_dict
                 perf_summary[f"{dataset}_{split}"] = result_dict["fscore"]
 
+            if perf_file is not None:
                 json.dump(output_dict, open(perf_file, "w"), indent=2)
 
-                logger.info("Final performance summary at %s" % path.abspath(perf_file))
-                sys.stdout.flush()
+            logger.info("Final performance summary at %s" % path.abspath(perf_file))
+            sys.stdout.flush()
 
         summary_file = path.join(self.config.paths.model_dir, "perf.json")
 
