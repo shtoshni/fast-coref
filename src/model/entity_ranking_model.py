@@ -73,8 +73,12 @@ class EntityRankingModel(nn.Module):
         self.loss_fn = nn.CrossEntropyLoss(
             label_smoothing=self.train_config.label_smoothing_wt
         )
-        # self.ignore_loss_fn = nn.CrossEntropyLoss(
-        # 	label_smoothing=self.train_config.label_smoothing_wt, reduction='sum')
+
+        if self.config.metadata_params.use_genre_feature:
+            self.genre_embeddings = nn.Embedding(
+                num_embeddings=len(self.config.metadata_params.genres),
+                embedding_dim=self.config.mention_params.emb_size,
+            )
 
     @property
     def device(self) -> torch.device:
@@ -105,7 +109,7 @@ class EntityRankingModel(nn.Module):
         if meta_params.use_genre_feature:
             doc_class = document["doc_key"][:2]
             if doc_class in meta_params.genres:
-                doc_class_idx = meta_params.index(doc_class)
+                doc_class_idx = meta_params.genres.index(doc_class)
             else:
                 doc_class_idx = meta_params.index(
                     meta_params.default_genre

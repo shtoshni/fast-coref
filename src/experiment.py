@@ -562,6 +562,9 @@ class Experiment:
 
         logger.info("Validation performance: %.1f" % self.train_info["val_perf"])
 
+        perf_file_dict = {}
+        dataset_output_dict = {}
+
         for split in ["dev", "test"]:
             logger.info("\n")
             logger.info("%s" % split.capitalize())
@@ -570,7 +573,11 @@ class Experiment:
                 dataset_dir = path.join(self.config.paths.model_dir, dataset)
                 if not path.exists(dataset_dir):
                     os.makedirs(dataset_dir)
-                perf_file = path.join(dataset_dir, "perf.json")
+
+                if dataset not in dataset_output_dict:
+                    dataset_output_dict[dataset] = {}
+                if dataset not in perf_file_dict:
+                    perf_file_dict[dataset] = path.join(dataset_dir, f"perf.json")
 
                 logger.info("Dataset: %s\n" % self.config.datasets[dataset].name)
 
@@ -586,14 +593,15 @@ class Experiment:
                 if self.config.use_wandb:
                     self._wandb_log(result_dict, dataset=dataset, split=split)
 
-                output_dict = dict(base_output_dict)
-                output_dict[f"{dataset}_{split}"] = result_dict
-                perf_summary[f"{dataset}_{split}"] = result_dict["fscore"]
+                dataset_output_dict[dataset][split] = result_dict
+                perf_summary[split] = result_dict["fscore"]
 
-                json.dump(output_dict, open(perf_file, "w"), indent=2)
+            sys.stdout.flush()
 
-                logger.info("Final performance summary at %s" % path.abspath(perf_file))
-                sys.stdout.flush()
+        for dataset, output_dict in dataset_output_dict.items():
+            perf_file = perf_file_dict[dataset]
+            json.dump(output_dict, open(perf_file, "w"), indent=2)
+            logger.info("Final performance summary at %s" % path.abspath(perf_file))
 
         summary_file = path.join(self.config.paths.model_dir, "perf.json")
 
