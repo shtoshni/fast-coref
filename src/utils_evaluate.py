@@ -227,7 +227,7 @@ def full_coref_evaluation(
         if torch.cuda.is_available()
         else 0.0
     )
-    logger.info("Max inference memory: %.1f" % max_mem)
+    logger.info("Max inference memory: %.1f Gb" % max_mem)
 
     return result_dict
 

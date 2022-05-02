@@ -567,7 +567,12 @@ class Experiment:
         if self.config.paths.model_dir:
             perf_summary["model_dir"] = path.normpath(self.config.paths.model_dir)
 
-        logger.info("Max memory: %.1f" % self.train_info.get("max_mem", 0.0))
+        logger.info(
+            "Max training memory: %.1f GB" % self.train_info.get("max_mem", 0.0)
+        )
+        if self.config.use_wandb:
+            wandb.log({"Max Training Memory": self.train_info.get("max_mem", 0.0)})
+
         logger.info("Validation performance: %.1f" % self.train_info["val_perf"])
 
         perf_file_dict = {}
