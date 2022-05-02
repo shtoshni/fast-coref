@@ -2,6 +2,7 @@ import os
 import logging
 import time
 import json
+import torch
 from os import path
 from collections import OrderedDict, Counter
 
@@ -60,6 +61,10 @@ def full_coref_evaluation(
         gold_ment_str = "_gold"
 
     log_file = path.join(log_dir, split + gold_ment_str + ".log.jsonl")
+
+    # Reset the peak memory to compute max memory stat for inference
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
     with open(log_file, "w") as f:
         # Capture the auxiliary action accuracy
         corr_actions, total_actions = 0.0, 0.0
@@ -127,9 +132,9 @@ def full_coref_evaluation(
 
             f.write(json.dumps(log_example) + "\n")
 
-        # Print individual metrics
         result_dict: Dict = OrderedDict()
         perf_str: str = ""
+        # Print individual metrics
         for indv_metric, indv_evaluator in zip(config.metrics, evaluator.evaluators):
             perf_str += (
                 ", " + indv_metric + ": {:.1f}".format(indv_evaluator.get_f1() * 100)
@@ -217,6 +222,12 @@ def full_coref_evaluation(
         logger.handlers[0].flush()
 
     logger.info("Inference time: %.2f" % inference_time)
+    max_mem = (
+        (torch.cuda.max_memory_allocated() / (1024**3))
+        if torch.cuda.is_available()
+        else 0.0
+    )
+    logger.info("Max inference memory: %.1f GB" % max_mem)
 
     return result_dict
 
