@@ -256,6 +256,7 @@ class Experiment:
             "global_steps": 0,
             "num_stuck_evals": 0,
             "peak_memory": 0.0,
+            "max_mem": 0.0,
         }
 
         # Initialize optimizers
@@ -414,13 +415,19 @@ class Experiment:
                     continue
 
                 if self.train_info["global_steps"] % train_config.log_frequency == 0:
+                    max_mem = (
+                        (torch.cuda.max_memory_allocated() / (1024**3))
+                        if torch.cuda.is_available()
+                        else 0.0
+                    )
+                    if self.train_info["max_mem"] < max_mem:
+                        self.train_info["max_mem"] = max_mem
+
                     logger.info(
-                        "{} {:.3f} Max mem {:.3f} GB".format(
+                        "{} {:.3f} Max mem {:.1f} GB".format(
                             cur_document["doc_key"],
                             loss,
-                            (torch.cuda.max_memory_allocated() / (1024**3))
-                            if torch.cuda.is_available()
-                            else 0.0,
+                            max_mem,
                         )
                     )
                     sys.stdout.flush()
@@ -560,6 +567,7 @@ class Experiment:
         if self.config.paths.model_dir:
             perf_summary["model_dir"] = path.normpath(self.config.paths.model_dir)
 
+        logger.info("Max memory: %.1f" % self.train_info.get("max_mem", 0.0))
         logger.info("Validation performance: %.1f" % self.train_info["val_perf"])
 
         perf_file_dict = {}
