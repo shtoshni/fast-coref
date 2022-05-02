@@ -22,13 +22,6 @@ class BaseDocEncoder(nn.Module):
         gradient_checkpointing = False
         if config.finetune:
             gradient_checkpointing = True
-            if torch.cuda.is_available():
-                memory_in_gb = torch.cuda.get_device_properties(0).total_memory // (
-                    1024**3
-                )
-                if memory_in_gb > 40:
-                    # Enough memory to not require gradient checkpointing
-                    gradient_checkpointing = False
 
         model_str: str = config.transformer.model_str
 
