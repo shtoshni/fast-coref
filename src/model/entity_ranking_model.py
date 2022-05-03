@@ -75,8 +75,11 @@ class EntityRankingModel(nn.Module):
         )
         if self.config.memory.mem_type.name != "unbounded":
             max_ents = self.config.memory.mem_type.max_ents
-            self.loss_fn = nn.CrossEntropyLoss(
+            self.coref_loss_fn = nn.CrossEntropyLoss(
                 weight=torch.tensor([1.0] * max_ents + [2.0]).to(self.device),
+                label_smoothing=self.train_config.label_smoothing_wt,
+            )
+          self.loss_fn = nn.CrossEntropyLoss(
                 label_smoothing=self.train_config.label_smoothing_wt,
             )
 
@@ -208,7 +211,7 @@ class EntityRankingModel(nn.Module):
                 continue
 
             target = torch.tensor([gt_idx], device=self.device)
-            coref_loss += self.loss_fn(
+            coref_loss += self.coref_loss_fn(
                 torch.unsqueeze(action_prob_list[counter], dim=0), target
             )
             counter += 1
