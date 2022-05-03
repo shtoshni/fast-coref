@@ -212,6 +212,7 @@ class EntityRankingModel(nn.Module):
                 continue
 
             target = torch.tensor([gt_idx], device=self.device)
+            print(target, action_prob_list[counter], (cell_idx, action_str))
             coref_loss += self.coref_loss_fn(
                 torch.unsqueeze(action_prob_list[counter], dim=0), target
             )
