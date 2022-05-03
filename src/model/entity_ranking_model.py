@@ -153,7 +153,6 @@ class EntityRankingModel(nn.Module):
                 if ent_counter > max_ents:
                     # Reached memory capacity
                     index = ent_counter - max_ents - 1
-                    print(index, gt_idx, (cell_idx, action_str))
                     target = torch.tensor([gt_idx], device=self.device)
                     loss_fn = nn.CrossEntropyLoss(reduction="sum")
                     ignore_loss += loss_fn(
@@ -325,7 +324,6 @@ class EntityRankingModel(nn.Module):
         gt_actions: List[Tuple[int, str]] = get_gt_actions(
             pred_mentions_list, truncated_document_clusters, self.config.memory.mem_type
         )
-        print(gt_actions[:30])
 
         pred_mentions = torch.tensor(pred_mentions_list, device=self.device)
 

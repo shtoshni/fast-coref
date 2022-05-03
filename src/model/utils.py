@@ -120,7 +120,7 @@ def get_actions_learned(pred_mentions, gt_clusters, max_ents):
                 cell_info = sorted(cell_info, key=lambda x: x[0] - 1e-10 * x[1])
                 min_remaining_mentions = cell_info[0][0]
 
-                if cur_rem_mentions >= min_remaining_mentions:
+                if cur_rem_mentions >= min_remaining_mentions and cur_rem_mentions > 1:
                     used_cell_idx = cell_info[0][2]  # Get the cell index
 
                 if used_cell_idx is None:
@@ -209,7 +209,7 @@ def get_actions_lru(pred_mentions, gt_clusters, max_ents):
                 # Remaining mentions in least recently used cell
                 lru_remaining_mentions = cell_info[0][0]
 
-                if cur_rem_mentions >= lru_remaining_mentions:
+                if cur_rem_mentions >= lru_remaining_mentions and cur_rem_mentions > 1:
                     used_cell_idx = cell_info[0][2]  # Get the cell index
 
                 if used_cell_idx is None:

@@ -391,7 +391,6 @@ class Experiment:
                         optimizer[key].zero_grad()
 
                     loss_dict: Dict = model.forward_training(document)
-                    print(loss_dict)
                     total_loss = loss_dict["total"]
                     if total_loss is None or torch.isnan(total_loss):
                         return None
