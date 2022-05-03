@@ -51,8 +51,6 @@ def get_actions_unbounded_fast(pred_mentions, gt_clusters):
 
     for idx, mention in enumerate(pred_mentions):
         if tuple(mention) not in mention_to_cluster:
-            # Technically the clustering model can't really ignore a file
-            # But this ignore operation is just added to get an upper bound oracle score
             actions.append((-1, "i"))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
@@ -85,7 +83,7 @@ def get_actions_learned(pred_mentions, gt_clusters, max_ents):
     for mention in pred_mentions:
         used_cell_idx = None
         if mention not in mention_to_cluster:
-            # Not a mention - Ignore it as a new singleton
+            # Invalid mention - Mention proposal module can propose spurious spans
             actions.append((-1, "i"))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
@@ -120,7 +118,11 @@ def get_actions_learned(pred_mentions, gt_clusters, max_ents):
                 cell_info = sorted(cell_info, key=lambda x: x[0] - 1e-10 * x[1])
                 min_remaining_mentions = cell_info[0][0]
 
-                if cur_rem_mentions >= min_remaining_mentions and cur_rem_mentions > 1:
+                if (min_remaining_mentions == -1) or (
+                    cur_rem_mentions >= min_remaining_mentions and cur_rem_mentions > 1
+                ):
+                    # If the memory is empty, always overwrite
+                    # Else only overwrite an entity if the current mention is not a singleton
                     used_cell_idx = cell_info[0][2]  # Get the cell index
 
                 if used_cell_idx is None:
@@ -169,7 +171,7 @@ def get_actions_lru(pred_mentions, gt_clusters, max_ents):
     for mention in pred_mentions:
         used_cell_idx = None
         if mention not in mention_to_cluster:
-            # Not a mention - Ignore it as a singleton
+            # Not a mention
             actions.append((-1, "i"))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
@@ -208,8 +210,11 @@ def get_actions_lru(pred_mentions, gt_clusters, max_ents):
 
                 # Remaining mentions in least recently used cell
                 lru_remaining_mentions = cell_info[0][0]
+                min_remaining_mentions = cell_info[0][0]
 
-                if cur_rem_mentions >= lru_remaining_mentions and cur_rem_mentions > 1:
+                if (min_remaining_mentions == -1) or (
+                    cur_rem_mentions >= lru_remaining_mentions and cur_rem_mentions > 1
+                ):
                     used_cell_idx = cell_info[0][2]  # Get the cell index
 
                 if used_cell_idx is None:
