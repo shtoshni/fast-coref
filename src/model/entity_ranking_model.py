@@ -342,12 +342,13 @@ class EntityRankingModel(nn.Module):
 
         # Consolidate different losses in one dictionary
         if ment_loss is not None:
-            ment_loss_wt = (
-                self.train_config.get("ment_loss_wt")
-                if self.train_config.get("ment_loss_wt", 1.0) is not None
-                else 1.0
-            )
-            loss_dict = {"total": ment_loss_wt * ment_loss, "entity": ment_loss}
+            # # ment_loss_wt = (
+            # #     self.train_config.get("ment_loss_wt")
+            # #     if self.train_config.get("ment_loss_wt", 1.0) is not None
+            # #     else 1.0
+            # # )
+            # loss_dict = {"total": ment_loss_wt * ment_loss, "entity": ment_loss}
+            loss_dict = {"total": ment_loss, "entity": ment_loss}
         else:
             loss_dict = {"total": 0.0}
 
