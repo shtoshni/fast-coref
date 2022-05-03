@@ -325,6 +325,7 @@ class EntityRankingModel(nn.Module):
         gt_actions: List[Tuple[int, str]] = get_gt_actions(
             pred_mentions_list, truncated_document_clusters, self.config.memory.mem_type
         )
+        print(gt_actions[:30])
 
         pred_mentions = torch.tensor(pred_mentions_list, device=self.device)
 
@@ -344,16 +345,16 @@ class EntityRankingModel(nn.Module):
 
         # Consolidate different losses in one dictionary
         if ment_loss is not None:
-            loss_dict = {"total": ment_loss, "entity": ment_loss}
+            loss_dict = {"total": ment_loss, "entity": ment_loss.detach()}
         else:
             loss_dict = {"total": 0.0}
 
         if len(coref_new_list) > 0:
             coref_loss = self.calculate_coref_loss(coref_new_list, gt_actions)
             loss_dict["total"] = loss_dict["total"] + coref_loss
-            loss_dict["coref"] = coref_loss
+            loss_dict["coref"] = coref_loss.detach()
             if ignore_loss is not None:
-                loss_dict["bounded"] = ignore_loss
+                loss_dict["bounded"] = ignore_loss.detach()
                 loss_dict["total"] = loss_dict["total"] + ignore_loss
         return loss_dict
 
