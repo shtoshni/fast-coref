@@ -86,7 +86,7 @@ def get_actions_learned(pred_mentions, gt_clusters, max_ents):
         used_cell_idx = None
         if mention not in mention_to_cluster:
             # Not a mention - Ignore it as a new singleton
-            actions.append((-1, "n"))
+            actions.append((-1, "i"))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
             if mention_cluster in cluster_to_cell:
@@ -170,7 +170,7 @@ def get_actions_lru(pred_mentions, gt_clusters, max_ents):
         used_cell_idx = None
         if mention not in mention_to_cluster:
             # Not a mention - Ignore it as a singleton
-            actions.append((-1, "n"))
+            actions.append((-1, "i"))
         else:
             mention_cluster = mention_to_cluster[tuple(mention)]
             if mention_cluster in cluster_to_cell:
