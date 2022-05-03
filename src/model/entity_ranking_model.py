@@ -153,8 +153,10 @@ class EntityRankingModel(nn.Module):
                 if ent_counter > max_ents:
                     # Reached memory capacity
                     index = ent_counter - max_ents - 1
+                    print(index, gt_idx, (cell_idx, action_str))
                     target = torch.tensor([gt_idx], device=self.device)
-                    ignore_loss += self.loss_fn(
+                    loss_fn = nn.CrossEntropyLoss(reduction="sum")
+                    ignore_loss += loss_fn(
                         torch.unsqueeze(new_ignore_list[index], dim=0), target
                     )
 
