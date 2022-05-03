@@ -168,6 +168,7 @@ class EntityRankingModel(nn.Module):
                     ignore_loss += self.loss_fn(
                         torch.unsqueeze(new_ignore_list[index], dim=0), target
                     )
+                    print(index, target, (cell_idx, action_str))
 
         return ignore_loss
 
