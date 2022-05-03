@@ -168,7 +168,7 @@ class EntityRankingModel(nn.Module):
                     ignore_loss += self.loss_fn(
                         torch.unsqueeze(new_ignore_list[index], dim=0), target
                     )
-                    print(index, target, (cell_idx, action_str))
+                    # print(index, target, (cell_idx, action_str))
 
         return ignore_loss
 
@@ -341,7 +341,7 @@ class EntityRankingModel(nn.Module):
         gt_actions: List[Tuple[int, str]] = get_gt_actions(
             pred_mentions_list, truncated_document_clusters, self.config.memory.mem_type
         )
-        print(gt_actions[:20])
+        # print(gt_actions[:20])
 
         pred_mentions = torch.tensor(pred_mentions_list, device=self.device)
 
@@ -371,7 +371,7 @@ class EntityRankingModel(nn.Module):
             loss_dict["coref"] = coref_loss.detach()
             if ignore_loss is not None:
                 loss_dict["bounded"] = ignore_loss.detach()
-                loss_dict["total"] = loss_dict["total"] + ignore_loss
+                loss_dict["total"] = loss_dict["total"] + 10.0 * ignore_loss
         return loss_dict
 
     def forward(self, document: Dict) -> Tuple[List, List, List, List]:
