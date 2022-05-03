@@ -280,15 +280,19 @@ class Experiment:
             self.model.get_params()[1], lr=optimizer_config.init_lr, eps=1e-6
         )
 
+        mem_type = self.config.model.memory.mem_type.name
+        num_warmup_steps = (
+            0 if mem_type == "unbounded" else int(0.1 * train_config.num_training_steps)
+        )
         if optimizer_config.lr_decay == "inv":
             self.optim_scheduler["mem"] = get_inverse_square_root_decay(
-                self.optimizer["mem"], num_warmup_steps=0
+                self.optimizer["mem"], num_warmup_steps=num_warmup_steps
             )
         else:
             # No warmup steps for model params
             self.optim_scheduler["mem"] = get_linear_schedule_with_warmup(
                 self.optimizer["mem"],
-                num_warmup_steps=0,
+                num_warmup_steps=num_warmup_steps,
                 num_training_steps=train_config.num_training_steps,
             )
 
