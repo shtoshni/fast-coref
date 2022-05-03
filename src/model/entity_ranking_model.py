@@ -195,6 +195,7 @@ class EntityRankingModel(nn.Module):
 
         max_ents = self.config.memory.mem_type.max_ents
 
+        print(action_prob_list)
         for idx, (cell_idx, action_str) in enumerate(action_tuple_list):
             if action_str == "c":
                 # Coreference with clusters currently tracked
