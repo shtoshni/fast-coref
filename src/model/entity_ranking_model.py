@@ -213,7 +213,7 @@ class EntityRankingModel(nn.Module):
                 continue
 
             target = torch.tensor([gt_idx], device=self.device)
-            print(target, action_prob_list[counter], (cell_idx, action_str))
+            # print(target, action_prob_list[counter], (cell_idx, action_str))
             if max_ents is not None and len(action_prob_list[counter]) == max_ents + 1:
                 loss_fn = self.coref_loss_fn
             else:
