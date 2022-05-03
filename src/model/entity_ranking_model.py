@@ -371,7 +371,10 @@ class EntityRankingModel(nn.Module):
             loss_dict["coref"] = coref_loss.detach()
             if ignore_loss is not None:
                 loss_dict["bounded"] = ignore_loss.detach()
-                loss_dict["total"] = loss_dict["total"] + 10.0 * ignore_loss
+                loss_dict["total"] = (
+                    loss_dict["total"]
+                    + self.train_config.get("ignore_loss_wt", 1.0) * ignore_loss
+                )
         return loss_dict
 
     def forward(self, document: Dict) -> Tuple[List, List, List, List]:
