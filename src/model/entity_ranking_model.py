@@ -111,7 +111,7 @@ class EntityRankingModel(nn.Module):
             if doc_class in meta_params.genres:
                 doc_class_idx = meta_params.genres.index(doc_class)
             else:
-                doc_class_idx = meta_params.index(
+                doc_class_idx = meta_params.genres.index(
                     meta_params.default_genre
                 )  # Default genre
 
