@@ -4,7 +4,7 @@ Code for the CRAC 2021 paper [On Generalization in Coreference Resolution](https
 This paper extends our work from the EMNLP 2020 paper [Learning to Ignore: Long Document Coreference
 with Bounded Memory Neural Networks](https://arxiv.org/pdf/2010.02807.pdf). 
 
-## Performace has improved!!
+## June 2022: Performace has improved!!
 Our current model gets 80.9 F-score for OntoNotes (80.6 reported in the paper), 80.2 F-score for LitBank (79.3 reported in the paper), and 88.3 F-score for PreCo (up from 87.8 reported in the paper). 
 
 **Why are we getting these gains?**<br/>
