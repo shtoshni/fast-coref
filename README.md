@@ -4,6 +4,11 @@ Code for the CRAC 2021 paper [On Generalization in Coreference Resolution](https
 This paper extends our work from the EMNLP 2020 paper [Learning to Ignore: Long Document Coreference
 with Bounded Memory Neural Networks](https://arxiv.org/pdf/2010.02807.pdf). 
 
+## Performace has improved!!
+Our current model gets 80.9 F-score for OntoNotes (80.6 reported in the paper), 80.2 F-score for LitBank (79.3 reported in the paper), and 88.3 F-score for PreCo (up from 87.8 reported in the paper). 
+
+**Why are we getting these gains?**<br/>
+Well pretty much all of this gain can be attributed to this [issue](https://github.com/shtoshni/fast-coref/issues/3). I, like many others, had carried forward the [Kenton Lee codebase](https://github.com/kentonl/e2e-coref) where the spans (due to the choice of ElMo as an encoder) were always restricted to word boundaries. Interestingly, while porting the code to the new era of subword tokenization based encoders, we didn't constrain the mention detector to respect word boundaries. By the end of the training, the model rarely makes these word boundary mistakes (it can which is why the above referenced issue was raised) but it does have to deal with a lot of noisy mentions in the mention proposal stage. By simply [adding the constraint of word boundaries](https://github.com/shtoshni/fast-coref/blob/main/src/model/mention_proposal/mention_proposal_module.py#L206), there's a significant reduction in the number of candidate mentions which ultimately leads to higher overall performance.  
 
 ## Changelog
 - Support for joint training and evaluation on eight popular coreference datasets.
@@ -127,6 +132,13 @@ are saved separately. The document encoder can then be easily uploaded to
 Huggingface.
 
 ### Inference
+
+**Inference on OntoNotes with model trained on OntoNotes**
+```
+python main.py experiment=ontonotes_pseudo train=False
+```
+This is the most common use case where the training and inference domain are the same. 
+The inference is automatically carried out whenever the training ends. The above command is useful if the inference needs to be done at some intermediate step. 
 
 **Inference on OntoNotes evaluation dataset with the jointly trained model**
 ```
