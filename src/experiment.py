@@ -420,7 +420,7 @@ class Experiment:
                         if torch.cuda.is_available()
                         else 0.0
                     )
-                    if self.train_info["max_mem"] < max_mem:
+                    if self.train_info.get("max_mem", 0.0) < max_mem:
                         self.train_info["max_mem"] = max_mem
 
                     logger.info(
